@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -38,9 +40,11 @@ type createUserRequest struct {
 }
 
 type userResponse struct {
-	UserID      string    `json:"user_id"`
-	DisplayName string    `json:"display_name"`
-	CreatedAt   time.Time `json:"created_at"`
+	UserID      string    `json:"user_id" bson:"user_id"`
+	DisplayName string    `json:"display_name" bson:"display_name"`
+	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	Online      bool      `json:"online" bson:"online"`
+	LastSeen    time.Time `json:"last_seen" bson:"last_seen"`
 }
 
 type createFriendRequest struct {
@@ -53,6 +57,8 @@ type friendResponse struct {
 	FriendID    string    `json:"friend_id" bson:"friend_id"`
 	DisplayName string    `json:"display_name" bson:"display_name"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	Online      bool      `json:"online" bson:"online"`
+	LastSeen    time.Time `json:"last_seen" bson:"last_seen"`
 }
 
 type friendRequestResponse struct {
@@ -76,6 +82,18 @@ type websocketEvent struct {
 	Payload bson.M `json:"payload"`
 }
 
+type conversationResponse struct {
+	ConversationID      string     `json:"conversation_id"`
+	RecipientID         string     `json:"recipient_id"`
+	DisplayName         string     `json:"display_name"`
+	LastMessage         string     `json:"last_message"`
+	LastMessageAt       time.Time  `json:"last_message_at"`
+	LastMessageSenderID string     `json:"last_message_sender_id"`
+	LastMessageReadAt   *time.Time `json:"last_message_read_at"`
+	IsFriend            bool       `json:"is_friend"`
+	UnreadCount         int64      `json:"unread_count"`
+}
+
 func conversationIDFor(userA string, userB string) string {
 	ids := []string{strings.TrimSpace(userA), strings.TrimSpace(userB)}
 	sort.Strings(ids)
@@ -96,11 +114,52 @@ func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 		return
 	}
 
-	if r.Method != http.MethodPost {
+	switch r.Method {
+	case http.MethodGet:
+		listUsers(w, r, client)
+	case http.MethodPost:
+		createUser(w, r, client)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+}
 
+func listUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+
+	filter := bson.M{}
+	if userID != "" {
+		filter["user_id"] = bson.M{"$ne": userID}
+	}
+
+	collection := client.Database(databaseName).Collection(usersName)
+	cursor, err := collection.Find(
+		r.Context(),
+		filter,
+		options.Find().SetSort(bson.D{{Key: "display_name", Value: 1}}),
+	)
+	if err != nil {
+		log.Printf("使用者清單讀取失敗: %v", err)
+		http.Error(w, "list users failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(r.Context())
+
+	users := []userResponse{}
+	if err := cursor.All(r.Context(), &users); err != nil {
+		log.Printf("使用者清單解析失敗: %v", err)
+		http.Error(w, "decode users failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		log.Printf("使用者清單回應 JSON 失敗: %v", err)
+	}
+}
+
+func createUser(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -116,6 +175,23 @@ func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 
 	now := time.Now()
 	collection := client.Database(databaseName).Collection(usersName)
+	existingUserCount, err := collection.CountDocuments(r.Context(), bson.M{
+		"user_id": bson.M{"$ne": req.UserID},
+		"display_name": bson.M{
+			"$regex":   "^" + regexp.QuoteMeta(req.DisplayName) + "$",
+			"$options": "i",
+		},
+	})
+	if err != nil {
+		log.Printf("使用者名稱檢查失敗: %v", err)
+		http.Error(w, "check display name failed", http.StatusInternalServerError)
+		return
+	}
+	if existingUserCount > 0 {
+		http.Error(w, "display name already exists", http.StatusConflict)
+		return
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"display_name": req.DisplayName,
@@ -124,9 +200,11 @@ func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 		"$setOnInsert": bson.M{
 			"user_id":    req.UserID,
 			"created_at": now,
+			"online":     false,
+			"last_seen":  now,
 		},
 	}
-	_, err := collection.UpdateOne(
+	_, err = collection.UpdateOne(
 		r.Context(),
 		bson.M{"user_id": req.UserID},
 		update,
@@ -191,6 +269,18 @@ func listFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 		log.Printf("朋友清單解析失敗: %v", err)
 		http.Error(w, "decode friends failed", http.StatusInternalServerError)
 		return
+	}
+	for index := range friends {
+		var user userResponse
+		err := client.Database(databaseName).Collection(usersName).
+			FindOne(r.Context(), bson.M{"user_id": friends[index].FriendID}).
+			Decode(&user)
+		if err != nil {
+			continue
+		}
+
+		friends[index].Online = user.Online
+		friends[index].LastSeen = user.LastSeen
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -417,6 +507,8 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		return
 	}
 	defer ws.Close()
+	setUserPresence(r.Context(), client, userID, true)
+	defer setUserPresence(context.Background(), client, userID, false)
 
 	fmt.Printf("Vue 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
 
@@ -424,6 +516,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	defer cancel()
 
 	go watchAndPush(ctx, ws, client, userID, conversationID)
+	markConversationRead(ctx, client, userID, conversationID)
 
 	collection := client.Database(databaseName).Collection(collectionName)
 
@@ -444,6 +537,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		msg["time"] = time.Now()
 		msg["sender_id"] = userID
 		msg["conversation_id"] = conversationIDFor(userID, recipientID)
+		msg["read_at"] = nil
 
 		if _, err := collection.InsertOne(ctx, msg); err != nil {
 			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
@@ -454,10 +548,272 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	}
 }
 
+func setUserPresence(ctx context.Context, client *mongo.Client, userID string, online bool) {
+	update := bson.M{
+		"$set": bson.M{
+			"online":    online,
+			"last_seen": time.Now(),
+		},
+	}
+	if online {
+		update = bson.M{
+			"$set": bson.M{
+				"online": online,
+			},
+		}
+	}
+
+	_, err := client.Database(databaseName).Collection(usersName).
+		UpdateOne(ctx, bson.M{"user_id": userID}, update)
+	if err != nil {
+		log.Printf("更新使用者在線狀態失敗: %v", err)
+	}
+}
+
+func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	conversationID := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
+	if userID == "" || conversationID == "" {
+		http.Error(w, "user_id and conversation_id are required", http.StatusBadRequest)
+		return
+	}
+
+	if !conversationIncludesUser(conversationID, userID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	markConversationRead(r.Context(), client, userID, conversationID)
+
+	collection := client.Database(databaseName).Collection(collectionName)
+	cursor, err := collection.Find(
+		r.Context(),
+		bson.M{"conversation_id": conversationID},
+		options.Find().SetSort(bson.D{{Key: "time", Value: 1}}).SetLimit(100),
+	)
+	if err != nil {
+		log.Printf("歷史訊息讀取失敗: %v", err)
+		http.Error(w, "list messages failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(r.Context())
+
+	messages := []bson.M{}
+	if err := cursor.All(r.Context(), &messages); err != nil {
+		log.Printf("歷史訊息解析失敗: %v", err)
+		http.Error(w, "decode messages failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(messages); err != nil {
+		log.Printf("歷史訊息回應 JSON 失敗: %v", err)
+	}
+}
+
+func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	collection := client.Database(databaseName).Collection(collectionName)
+	cursor, err := collection.Find(
+		r.Context(),
+		bson.M{"$or": bson.A{
+			bson.M{"sender_id": userID},
+			bson.M{"recipient_id": userID},
+		}},
+		options.Find().SetSort(bson.D{{Key: "time", Value: -1}}).SetLimit(500),
+	)
+	if err != nil {
+		log.Printf("對話清單讀取失敗: %v", err)
+		http.Error(w, "list conversations failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(r.Context())
+
+	friendNames := loadFriendNames(r.Context(), client, userID)
+	conversations := []conversationResponse{}
+	seen := map[string]bool{}
+
+	for cursor.Next(r.Context()) {
+		var message bson.M
+		if err := cursor.Decode(&message); err != nil {
+			log.Printf("對話訊息解析失敗: %v", err)
+			continue
+		}
+
+		conversationID, _ := message["conversation_id"].(string)
+		if conversationID == "" || seen[conversationID] {
+			continue
+		}
+
+		senderID, _ := message["sender_id"].(string)
+		recipientID, _ := message["recipient_id"].(string)
+		otherID := recipientID
+		if senderID != userID {
+			otherID = senderID
+		}
+		if otherID == "" {
+			continue
+		}
+
+		displayName, isFriend := friendNames[otherID]
+		if displayName == "" {
+			displayName = lookupDisplayName(r.Context(), client, otherID)
+		}
+
+		conversations = append(conversations, conversationResponse{
+			ConversationID:      conversationID,
+			RecipientID:         otherID,
+			DisplayName:         displayName,
+			LastMessage:         fmt.Sprint(message["text"]),
+			LastMessageAt:       messageTime(message["time"]),
+			LastMessageSenderID: senderID,
+			LastMessageReadAt:   messageTimePtr(message["read_at"]),
+			IsFriend:            isFriend,
+			UnreadCount:         countUnreadMessages(r.Context(), client, userID, conversationID),
+		})
+		seen[conversationID] = true
+	}
+
+	if err := cursor.Err(); err != nil {
+		log.Printf("對話清單 cursor 失敗: %v", err)
+		http.Error(w, "list conversations failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(conversations); err != nil {
+		log.Printf("對話清單回應 JSON 失敗: %v", err)
+	}
+}
+
+func loadFriendNames(ctx context.Context, client *mongo.Client, userID string) map[string]string {
+	collection := client.Database(databaseName).Collection(friendsName)
+	cursor, err := collection.Find(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return map[string]string{}
+	}
+	defer cursor.Close(ctx)
+
+	names := map[string]string{}
+	for cursor.Next(ctx) {
+		var friend friendResponse
+		if err := cursor.Decode(&friend); err == nil {
+			names[friend.FriendID] = friend.DisplayName
+		}
+	}
+
+	return names
+}
+
+func lookupDisplayName(ctx context.Context, client *mongo.Client, userID string) string {
+	if userID == "stock_bot" {
+		return "股票機器人"
+	}
+
+	var user userResponse
+	err := client.Database(databaseName).Collection(usersName).
+		FindOne(ctx, bson.M{"user_id": userID}).
+		Decode(&user)
+	if err != nil || user.DisplayName == "" {
+		return userID
+	}
+
+	return user.DisplayName
+}
+
+func messageTime(value interface{}) time.Time {
+	switch typed := value.(type) {
+	case time.Time:
+		return typed
+	case primitive.DateTime:
+		return typed.Time()
+	default:
+		return time.Time{}
+	}
+}
+
+func messageTimePtr(value interface{}) *time.Time {
+	valueTime := messageTime(value)
+	if valueTime.IsZero() {
+		return nil
+	}
+
+	return &valueTime
+}
+
+func countUnreadMessages(ctx context.Context, client *mongo.Client, userID string, conversationID string) int64 {
+	count, err := client.Database(databaseName).Collection(collectionName).CountDocuments(ctx, bson.M{
+		"conversation_id": conversationID,
+		"recipient_id":    userID,
+		"read_at":         nil,
+	})
+	if err != nil {
+		log.Printf("未讀訊息計算失敗: %v", err)
+		return 0
+	}
+
+	return count
+}
+
+func conversationIncludesUser(conversationID string, userID string) bool {
+	for _, part := range strings.Split(conversationID, ":") {
+		if part == userID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func markConversationRead(ctx context.Context, client *mongo.Client, userID string, conversationID string) {
+	collection := client.Database(databaseName).Collection(collectionName)
+	_, err := collection.UpdateMany(
+		ctx,
+		bson.M{
+			"conversation_id": conversationID,
+			"recipient_id":    userID,
+			"read_at":         nil,
+		},
+		bson.M{"$set": bson.M{"read_at": time.Now()}},
+	)
+	if err != nil {
+		log.Printf("標記已讀失敗: %v", err)
+	}
+}
+
 func watchAndPush(ctx context.Context, ws *websocket.Conn, client *mongo.Client, userID string, conversationID string) {
 	pipeline := mongo.Pipeline{
 		{{Key: "$match", Value: bson.D{
-			{Key: "operationType", Value: "insert"},
+			{Key: "operationType", Value: bson.D{{Key: "$in", Value: bson.A{"insert", "update"}}}},
 			{Key: "$or", Value: bson.A{
 				bson.D{
 					{Key: "ns.coll", Value: collectionName},
@@ -480,7 +836,11 @@ func watchAndPush(ctx context.Context, ws *websocket.Conn, client *mongo.Client,
 		}}},
 	}
 
-	stream, err := client.Database(databaseName).Watch(ctx, pipeline)
+	stream, err := client.Database(databaseName).Watch(
+		ctx,
+		pipeline,
+		options.ChangeStream().SetFullDocument(options.UpdateLookup),
+	)
 	if err != nil {
 		log.Printf("無法監控 MongoDB Change Stream: %v", err)
 		return
@@ -489,7 +849,8 @@ func watchAndPush(ctx context.Context, ws *websocket.Conn, client *mongo.Client,
 
 	for stream.Next(ctx) {
 		var event struct {
-			Namespace struct {
+			OperationType string `bson:"operationType"`
+			Namespace     struct {
 				Collection string `bson:"coll"`
 			} `bson:"ns"`
 			FullDocument bson.M `bson:"fullDocument"`
@@ -503,6 +864,17 @@ func watchAndPush(ctx context.Context, ws *websocket.Conn, client *mongo.Client,
 		eventType := websocketEventType(event.Namespace.Collection)
 		if eventType == "" {
 			continue
+		}
+		if event.Namespace.Collection == collectionName && event.OperationType == "update" {
+			eventType = "read_receipt"
+		}
+
+		if eventType == "message" {
+			conversation, _ := event.FullDocument["conversation_id"].(string)
+			recipient, _ := event.FullDocument["recipient_id"].(string)
+			if conversation == conversationID && recipient == userID {
+				markConversationRead(ctx, client, userID, conversationID)
+			}
 		}
 
 		if err := ws.WriteJSON(websocketEvent{
@@ -559,6 +931,12 @@ func main() {
 	})
 	http.HandleFunc("/friend-requests", func(w http.ResponseWriter, r *http.Request) {
 		handleFriendRequests(w, r, client)
+	})
+	http.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
+		handleMessages(w, r, client)
+	})
+	http.HandleFunc("/conversations", func(w http.ResponseWriter, r *http.Request) {
+		handleConversations(w, r, client)
 	})
 
 	fmt.Printf("Go WebSocket 伺服器啟動於 %s\n", serverAddr)

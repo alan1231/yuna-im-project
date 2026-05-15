@@ -1,8 +1,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { resolveChangePercent } from '../utils/stockChange'
 
-const WS_URL = 'ws://localhost:8080/ws'
-const API_URL = 'http://localhost:8080'
+const API_HOST = window.location.hostname || 'localhost'
+const API_URL = `http://${API_HOST}:8080`
+const WS_URL = `ws://${API_HOST}:8080/ws`
 const STOCK_BOT_ID = 'stock_bot'
 const STOCK_BOT_NAME = 'Stock_Bot'
 const DEFAULT_ROOMS = [
@@ -12,6 +13,7 @@ const DEFAULT_ROOMS = [
     description: '台股、美股與股利查詢',
     initials: '股',
     recipientId: STOCK_BOT_ID,
+    isFriend: false,
   },
 ]
 
@@ -27,18 +29,46 @@ const createFriendRoom = (currentUserId, friend) => ({
   initials: getInitials(friend.display_name),
   recipientId: friend.friend_id,
   conversationId: getConversationId(currentUserId, friend.friend_id),
+  isFriend: true,
+  online: Boolean(friend.online),
+  lastSeen: friend.last_seen || '',
+  lastMessage: '',
+  lastMessageAt: '',
+  lastMessageTimeMs: 0,
+  lastMessageIsSelf: false,
+  lastMessageReadAt: '',
+  unreadCount: 0,
+})
+const createUserRoom = (currentUserId, user, description = '使用者') => ({
+  id: user.user_id,
+  name: user.display_name,
+  description,
+  initials: getInitials(user.display_name),
+  recipientId: user.user_id,
+  conversationId: getConversationId(currentUserId, user.user_id),
+  isFriend: false,
+  online: Boolean(user.online),
+  lastSeen: user.last_seen || '',
+  lastMessage: '',
+  lastMessageAt: '',
+  lastMessageTimeMs: 0,
+  lastMessageIsSelf: false,
+  lastMessageReadAt: '',
+  unreadCount: 0,
 })
 
 const getCurrentTime = () => {
   return new Date().toLocaleTimeString('zh-TW', {
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 }
 
 const normalizeIncomingMessage = (data, currentUserId) => {
   const senderId = data.sender_id || data.senderId || ''
   const recipientId = data.recipient_id || data.recipientId || ''
+  const readAt = data.read_at || data.readAt || ''
   const conversationId =
     senderId && recipientId
       ? getConversationId(senderId, recipientId)
@@ -52,7 +82,8 @@ const normalizeIncomingMessage = (data, currentUserId) => {
     isSelf: senderId === currentUserId,
     text: data.text || '',
     changePercent: resolveChangePercent(data),
-    sentAt: data.sentAt || getCurrentTime(),
+    sentAt: data.sentAt || data.time || getCurrentTime(),
+    readAt,
   }
 }
 
@@ -60,8 +91,15 @@ export const useChatViewModel = (currentUser) => {
   const rooms = ref(DEFAULT_ROOMS.map((room) => ({
     ...room,
     conversationId: getConversationId(currentUser.id, room.recipientId),
+    lastMessage: '',
+    lastMessageAt: '',
+    lastMessageTimeMs: 0,
+    lastMessageIsSelf: false,
+    lastMessageReadAt: '',
+    unreadCount: 0,
   })))
   const activeRoomId = ref(STOCK_BOT_ID)
+  const availableUsers = ref([])
   const messagesByConversation = ref(
     Object.fromEntries(rooms.value.map((room) => [room.conversationId, []])),
   )
@@ -70,6 +108,8 @@ export const useChatViewModel = (currentUser) => {
   const connectionError = ref('')
   const roomError = ref('')
   const handledRequestIds = new Set()
+  const loadedConversationIds = new Set()
+  const messageKeysByConversation = new Map()
 
   let socket = null
 
@@ -82,7 +122,7 @@ export const useChatViewModel = (currentUser) => {
   })
 
   const canSend = computed(() => {
-    return isConnected.value && userInput.value.trim().length > 0
+    return userInput.value.trim().length > 0
   })
 
   const addSystemMessage = (text) => {
@@ -96,15 +136,93 @@ export const useChatViewModel = (currentUser) => {
     })
   }
 
-  const appendMessage = (data) => {
+  const appendMessage = (data, options = {}) => {
     const message = normalizeIncomingMessage(data, currentUser.id)
     const conversationId = message.conversationId || activeRoom.value.conversationId
+    const otherUserId = message.isSelf ? message.recipientId : message.senderId
+    const otherUserName = message.isSelf ? '' : message.sender
+    const messageKey = getMessageKey(message)
 
     if (!messagesByConversation.value[conversationId]) {
       messagesByConversation.value[conversationId] = []
     }
 
+    if (!messageKeysByConversation.has(conversationId)) {
+      messageKeysByConversation.set(conversationId, new Set())
+    }
+
+    const keys = messageKeysByConversation.get(conversationId)
+    if (keys.has(messageKey)) return
+    keys.add(messageKey)
+
+    if (otherUserId && otherUserId !== STOCK_BOT_ID) {
+      appendRoom({
+        id: otherUserId,
+        name:
+          findKnownUserName(otherUserId) ||
+          otherUserName ||
+          otherUserId,
+        description: '聊天',
+        initials: getInitials(findKnownUserName(otherUserId) || otherUserName || otherUserId),
+        recipientId: otherUserId,
+        conversationId,
+        isFriend: false,
+      })
+    }
+
     messagesByConversation.value[conversationId].push(message)
+    updateRoomSummary(conversationId, message, options)
+  }
+
+  const updateRoomSummary = (conversationId, message, options = {}) => {
+    const room = rooms.value.find((item) => item.conversationId === conversationId)
+    if (!room) return
+
+    room.lastMessage = message.text
+    room.lastMessageAt = formatRoomTime(message.sentAt)
+    room.lastMessageTimeMs = getTimeMs(message.sentAt)
+    room.lastMessageIsSelf = message.isSelf
+    room.lastMessageReadAt = message.readAt || ''
+
+    if (!options.isHistory && !message.isSelf && room.id !== activeRoomId.value) {
+      room.unreadCount += 1
+    }
+
+    sortRooms()
+  }
+
+  const formatRoomTime = (value) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return String(value || '')
+
+  return date.toLocaleTimeString('zh-TW', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+  const getTimeMs = (value) => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+  }
+
+  const sortRooms = () => {
+    rooms.value.sort((a, b) => {
+      if (a.id === STOCK_BOT_ID && !b.lastMessageTimeMs) return -1
+      if (b.id === STOCK_BOT_ID && !a.lastMessageTimeMs) return 1
+      return (b.lastMessageTimeMs || 0) - (a.lastMessageTimeMs || 0)
+    })
+  }
+
+  const getMessageKey = (message) => {
+    return [
+      message.senderId,
+      message.recipientId,
+      message.conversationId,
+      message.sentAt,
+      message.text,
+    ].join('|')
   }
 
   const handleFriendRequest = async (request) => {
@@ -134,6 +252,9 @@ export const useChatViewModel = (currentUser) => {
         break
       case 'friend_added':
         handleFriendAdded(data.payload)
+        break
+      case 'read_receipt':
+        applyReadReceipt(data.payload)
         break
       default:
         console.warn('收到未知 WebSocket 事件:', data)
@@ -186,13 +307,95 @@ export const useChatViewModel = (currentUser) => {
   }
 
   const appendRoom = (room) => {
-    const exists = rooms.value.some((existingRoom) => existingRoom.id === room.id)
-    if (exists) return
+    const existingRoom = rooms.value.find((item) => item.id === room.id)
+    if (existingRoom) {
+      const isFriend = existingRoom.isFriend || room.isFriend || room.description === '朋友'
+      Object.assign(existingRoom, {
+        ...room,
+        description: isFriend ? '朋友' : room.description || existingRoom.description,
+        isFriend,
+        lastMessage: room.lastMessage || existingRoom.lastMessage,
+        lastMessageAt: room.lastMessageAt || existingRoom.lastMessageAt,
+        lastMessageTimeMs: room.lastMessageTimeMs || existingRoom.lastMessageTimeMs,
+        lastMessageIsSelf: room.lastMessage ? room.lastMessageIsSelf : existingRoom.lastMessageIsSelf,
+        lastMessageReadAt: room.lastMessage ? room.lastMessageReadAt : existingRoom.lastMessageReadAt,
+        unreadCount:
+          room.lastMessage && typeof room.unreadCount === 'number'
+            ? room.unreadCount
+            : existingRoom.unreadCount || 0,
+      })
+      sortRooms()
+      return existingRoom
+    }
 
     rooms.value.push(room)
 
     if (!messagesByConversation.value[room.conversationId]) {
       messagesByConversation.value[room.conversationId] = []
+    }
+
+    sortRooms()
+    return room
+  }
+
+  const applyReadReceipt = (payload) => {
+    const message = normalizeIncomingMessage(payload, currentUser.id)
+    if (!message.conversationId || !message.readAt) return
+
+    const messages = messagesByConversation.value[message.conversationId] || []
+    messages.forEach((item) => {
+      const sameMessage =
+        item.senderId === message.senderId &&
+        item.recipientId === message.recipientId &&
+        item.sentAt === message.sentAt &&
+        item.text === message.text
+      if (sameMessage) {
+        item.readAt = message.readAt
+      }
+    })
+
+    const room = rooms.value.find((item) => item.conversationId === message.conversationId)
+    if (room?.lastMessageIsSelf && room.lastMessage === message.text) {
+      room.lastMessageReadAt = message.readAt
+    }
+  }
+
+  const loadMessagesForRoom = async (room) => {
+    if (!room?.conversationId || loadedConversationIds.has(room.conversationId)) return
+
+    try {
+      const url = new URL(`${API_URL}/messages`)
+      url.searchParams.set('user_id', currentUser.id)
+      url.searchParams.set('conversation_id', room.conversationId)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('load messages failed')
+
+      const messages = await response.json()
+      messages.forEach((message) => appendMessage(message, { isHistory: true }))
+      room.unreadCount = 0
+      loadedConversationIds.add(room.conversationId)
+    } catch (error) {
+      console.error('載入歷史訊息失敗:', error)
+      roomError.value = '歷史訊息載入失敗'
+    }
+  }
+
+  const findKnownUserName = (userId) => {
+    const user = availableUsers.value.find((item) => item.user_id === userId)
+    return user?.display_name || ''
+  }
+
+  const loadUsers = async () => {
+    try {
+      const url = new URL(`${API_URL}/users`)
+      url.searchParams.set('user_id', currentUser.id)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('load users failed')
+
+      availableUsers.value = await response.json()
+    } catch (error) {
+      console.error('載入使用者清單失敗:', error)
+      roomError.value = '使用者清單載入失敗'
     }
   }
 
@@ -212,6 +415,38 @@ export const useChatViewModel = (currentUser) => {
     } catch (error) {
       console.error('載入朋友清單失敗:', error)
       roomError.value = '朋友清單載入失敗'
+    }
+  }
+
+  const loadConversations = async () => {
+    try {
+      const url = new URL(`${API_URL}/conversations`)
+      url.searchParams.set('user_id', currentUser.id)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('load conversations failed')
+
+      const conversations = await response.json()
+      conversations.forEach((conversation) => {
+        appendRoom({
+          id: conversation.recipient_id,
+          name: conversation.display_name,
+          description: conversation.is_friend ? '朋友' : '聊天',
+          initials: getInitials(conversation.display_name),
+          recipientId: conversation.recipient_id,
+          conversationId: conversation.conversation_id,
+          isFriend: Boolean(conversation.is_friend),
+          lastMessage: conversation.last_message || '',
+          lastMessageAt: formatRoomTime(conversation.last_message_at),
+          lastMessageTimeMs: getTimeMs(conversation.last_message_at),
+          lastMessageIsSelf: conversation.last_message_sender_id === currentUser.id,
+          lastMessageReadAt: conversation.last_message_read_at || '',
+          unreadCount: conversation.unread_count || 0,
+        })
+      })
+      sortRooms()
+    } catch (error) {
+      console.error('載入聊天列表失敗:', error)
+      roomError.value = '聊天列表載入失敗'
     }
   }
 
@@ -256,7 +491,17 @@ export const useChatViewModel = (currentUser) => {
 
     activeRoomId.value = roomId
     userInput.value = ''
+    activeRoom.value.unreadCount = 0
+    loadMessagesForRoom(activeRoom.value).catch((error) => {
+      console.error('切換聊天室載入歷史訊息失敗:', error)
+    })
     reconnect()
+  }
+
+  const startChatWithUser = (user) => {
+    const room = createUserRoom(currentUser.id, user, '聊天')
+    appendRoom(room)
+    selectRoom(room.id)
   }
 
   const addFriend = async (displayName) => {
@@ -288,7 +533,12 @@ export const useChatViewModel = (currentUser) => {
 
   const sendMessage = () => {
     const text = userInput.value.trim()
-    if (!text || !socket || socket.readyState !== WebSocket.OPEN) return
+    if (!text) return
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      connectionError.value = '目前尚未連線，正在重新連線。'
+      reconnect()
+      return
+    }
 
     socket.send(
       JSON.stringify({
@@ -303,8 +553,11 @@ export const useChatViewModel = (currentUser) => {
   }
 
   onMounted(async () => {
+    await loadUsers()
     await loadFriends()
+    await loadConversations()
     await loadFriendRequests()
+    await loadMessagesForRoom(activeRoom.value)
     connect()
   })
   onUnmounted(() => {
@@ -313,6 +566,7 @@ export const useChatViewModel = (currentUser) => {
 
   return {
     rooms,
+    availableUsers,
     activeRoom,
     activeRoomId,
     messages,
@@ -322,7 +576,9 @@ export const useChatViewModel = (currentUser) => {
     roomError,
     canSend,
     selectRoom,
+    startChatWithUser,
     addFriend,
+    refreshFriends: loadFriends,
     sendMessage,
   }
 }

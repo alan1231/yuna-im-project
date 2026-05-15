@@ -35,10 +35,10 @@ start_service() {
 trap cleanup EXIT INT TERM
 
 start_service "go" "$ROOT_DIR/backend-go" go run .
-start_service "vue" "$ROOT_DIR/frontend-vue" npm run dev -- --host 127.0.0.1
+start_service "vue" "$ROOT_DIR/frontend-vue" npm run dev -- --host 0.0.0.0
 start_service "python" "$ROOT_DIR/backend-python" ./venv/bin/python dev_agent.py
 
 echo "Dev services started."
-echo "Vue will print its local URL below. Press Ctrl+C to stop all services."
+echo "Vue will print its local and network URLs below. Press Ctrl+C to stop all services."
 
 wait

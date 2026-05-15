@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 import re
 import time
@@ -269,7 +269,7 @@ def start_ai_agent():
                         "recipient_id": sender_id,
                         "conversation_id": conversation_id,
                         "text": reply_text,
-                        "time": datetime.now(),
+                        "time": datetime.now(timezone.utc),
                         "is_ai": True
                     })
                     print("📤 已回覆股價資訊", flush=True)

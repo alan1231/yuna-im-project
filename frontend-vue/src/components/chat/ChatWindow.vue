@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useChatViewModel } from '../../composables/useChatViewModel'
 import ChatComposer from './ChatComposer.vue'
 import ChatHeader from './ChatHeader.vue'
@@ -13,9 +14,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['logout'])
+const mobileView = ref('rooms')
+let wasMobile = false
 
 const {
   rooms,
+  availableUsers,
   activeRoom,
   activeRoomId,
   messages,
@@ -25,25 +29,67 @@ const {
   roomError,
   canSend,
   selectRoom,
+  startChatWithUser,
   addFriend,
+  refreshFriends,
   sendMessage,
 } = useChatViewModel(props.currentUser)
+
+const openRoom = (roomId) => {
+  selectRoom(roomId)
+  mobileView.value = 'chat'
+}
+
+const openUserChat = (user) => {
+  startChatWithUser(user)
+  mobileView.value = 'chat'
+}
+
+const syncMobileView = () => {
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  if (isMobile && !wasMobile) {
+    mobileView.value = 'chat'
+  }
+  wasMobile = isMobile
+}
+
+onMounted(() => {
+  wasMobile = window.matchMedia('(max-width: 768px)').matches
+  window.addEventListener('resize', syncMobileView)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', syncMobileView)
+})
 </script>
 
 <template>
-  <main class="chat-shell">
+  <main
+    class="chat-shell"
+    :class="{
+      'chat-shell-mobile-list': mobileView === 'rooms',
+      'chat-shell-mobile-chat': mobileView === 'chat',
+    }"
+  >
     <RoomList
       :rooms="rooms"
+      :available-users="availableUsers"
       :active-room-id="activeRoomId"
       :error="roomError"
       :current-user="props.currentUser"
-      @select="selectRoom"
+      @select="openRoom"
+      @start-chat="openUserChat"
       @add-friend="addFriend"
+      @refresh-friends="refreshFriends"
       @logout="emit('logout')"
     />
 
     <section class="chat-panel">
-      <ChatHeader :is-connected="isConnected" :room="activeRoom" />
+      <ChatHeader
+        :is-connected="isConnected"
+        :room="activeRoom"
+        @back="mobileView = 'rooms'"
+      />
 
       <p v-if="connectionError" class="connection-error">
         {{ connectionError }}

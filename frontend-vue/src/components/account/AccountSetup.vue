@@ -12,22 +12,42 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['create'])
+const emit = defineEmits(['create', 'login'])
 const displayName = ref('')
+const mode = ref('login')
 
 const submit = () => {
-  emit('create', displayName.value.trim())
+  emit(mode.value === 'login' ? 'login' : 'create', displayName.value.trim())
 }
 </script>
 
 <template>
   <main class="account-screen">
     <form class="account-panel" @submit.prevent="submit">
-      <p class="eyebrow">Create Account</p>
-      <h1>建立你的帳號</h1>
+      <p class="eyebrow">Account</p>
+      <h1>{{ mode === 'login' ? '登入帳號' : '建立你的帳號' }}</h1>
       <p class="account-copy">
-        輸入一個顯示名稱後，就可以開始使用一對一聊天與股票機器人。
+        {{ mode === 'login'
+          ? '輸入既有顯示名稱，回到你的聊天與股票機器人。'
+          : '輸入一個尚未使用的顯示名稱後，就可以開始聊天。' }}
       </p>
+
+      <div class="account-mode-switch" role="tablist" aria-label="帳號模式">
+        <button
+          type="button"
+          :class="{ 'account-mode-active': mode === 'login' }"
+          @click="mode = 'login'"
+        >
+          登入
+        </button>
+        <button
+          type="button"
+          :class="{ 'account-mode-active': mode === 'create' }"
+          @click="mode = 'create'"
+        >
+          建立
+        </button>
+      </div>
 
       <label class="account-field">
         <span>顯示名稱</span>
@@ -43,7 +63,7 @@ const submit = () => {
       <p v-if="props.error" class="account-error">{{ props.error }}</p>
 
       <button type="submit" :disabled="props.isSubmitting || !displayName.trim()">
-        {{ props.isSubmitting ? '建立中' : '建立帳號' }}
+        {{ props.isSubmitting ? '處理中' : mode === 'login' ? '登入' : '建立帳號' }}
       </button>
     </form>
   </main>

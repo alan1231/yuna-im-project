@@ -3,7 +3,8 @@ import { ref } from 'vue'
 import AccountSetup from './components/account/AccountSetup.vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
 
-const API_URL = 'http://localhost:8080'
+const API_HOST = window.location.hostname || 'localhost'
+const API_URL = `http://${API_HOST}:8080`
 const USER_PROFILE_KEY = 'stock-analysis-user-profile'
 
 const loadStoredUser = () => {
@@ -46,6 +47,11 @@ const createUser = async (displayName) => {
       body: JSON.stringify(payload),
     })
 
+    if (response.status === 409) {
+      accountError.value = '這個顯示名稱已被使用，請換一個名稱。'
+      return
+    }
+
     if (!response.ok) {
       throw new Error('create user failed')
     }
@@ -59,6 +65,37 @@ const createUser = async (displayName) => {
   } catch (error) {
     console.error('建立帳號失敗:', error)
     accountError.value = '建立帳號失敗，請確認 Go 後端已啟動。'
+  } finally {
+    isCreatingUser.value = false
+  }
+}
+
+const loginUser = async (displayName) => {
+  const name = displayName.trim()
+  if (!name) return
+
+  isCreatingUser.value = true
+  accountError.value = ''
+
+  try {
+    const response = await fetch(`${API_URL}/users`)
+    if (!response.ok) throw new Error('load users failed')
+
+    const users = await response.json()
+    const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
+    if (!user) {
+      accountError.value = '找不到這個帳號，請確認名稱是否正確。'
+      return
+    }
+
+    currentUser.value = {
+      id: user.user_id,
+      displayName: user.display_name,
+    }
+    window.localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(currentUser.value))
+  } catch (error) {
+    console.error('登入失敗:', error)
+    accountError.value = '登入失敗，請確認 Go 後端已啟動。'
   } finally {
     isCreatingUser.value = false
   }
@@ -82,5 +119,6 @@ const logout = () => {
     :is-submitting="isCreatingUser"
     :error="accountError"
     @create="createUser"
+    @login="loginUser"
   />
 </template>
