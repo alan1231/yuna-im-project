@@ -1,0 +1,19 @@
+services:
+  # MongoDB: 儲存訊息歷史
+  mongodb:
+    image: mongo:latest
+    container_name: im-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # Redis: 儲存用戶在線狀態 (Go 會頻繁使用)
+  redis:
+    image: redis:alpine
+    container_name: im-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  mongo_data:

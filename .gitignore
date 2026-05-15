@@ -1,0 +1,15 @@
+# Node (Vue)
+node_modules/
+dist/
+
+# Go
+bin/
+*.exe
+
+# Python
+__pycache__/
+venv/
+.env
+
+# OS
+.DS_Store
