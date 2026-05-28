@@ -9,7 +9,8 @@ STOCK_BOT_NAME = "Stock_Bot"
 def get_messages_collection():
     from pymongo import MongoClient
 
-    # 連線設定
+    # The bot communicates with Go through MongoDB: it watches user messages and
+    # writes bot replies back into the same messages collection.
     client = MongoClient("mongodb://localhost:27017/?directConnection=true")
     db = client["yuna_chat"]
     return db["messages"]
@@ -34,6 +35,8 @@ def extract_stock_symbol(command_text):
     return None
 
 def parse_stock_command(command_text):
+    # Only stock-like messages should trigger the bot. Normal chat text is
+    # ignored so the bot can live inside the same IM message stream.
     text = command_text.strip().upper()
     symbol = extract_stock_symbol(text)
     if symbol:
@@ -220,6 +223,8 @@ def get_stock_price(raw_symbol):
 def start_ai_agent():
     print("🤖 股價助手已啟動！請在聊天室輸入如 '2337'、'$2337'、'AVGO' 或 '$TSM'", flush=True)
 
+    # Change Stream requires MongoDB replica set mode. The pipeline keeps this
+    # worker scoped to messages sent to the stock bot and prevents reply loops.
     pipeline = [{
         "$match": {
             "operationType": "insert",
@@ -262,7 +267,8 @@ def start_ai_agent():
                     else:
                         continue
 
-                    # 存回 MongoDB，Go 會自動推播到 Vue
+                    # Store the reply as a normal message. Go's Change Stream
+                    # watcher will push it to Vue through WebSocket.
                     messages_col.insert_one({
                         "sender": STOCK_BOT_NAME,
                         "sender_id": STOCK_BOT_ID,

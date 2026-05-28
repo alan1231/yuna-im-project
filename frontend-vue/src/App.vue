@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import AccountSetup from './components/account/AccountSetup.vue'
+import AdminConsole from './components/admin/AdminConsole.vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
 
 const API_HOST = window.location.hostname || 'localhost'
@@ -25,6 +26,9 @@ const createLocalUserId = () => {
 const currentUser = ref(loadStoredUser())
 const isCreatingUser = ref(false)
 const accountError = ref('')
+// The admin console is bundled in the same Vue app, but kept on a separate
+// route so chat and management UI can evolve independently.
+const isAdminRoute = window.location.pathname.startsWith('/admin')
 
 const createUser = async (displayName) => {
   const name = displayName.trim()
@@ -109,8 +113,9 @@ const logout = () => {
 </script>
 
 <template>
+  <AdminConsole v-if="isAdminRoute" />
   <ChatWindow
-    v-if="currentUser"
+    v-else-if="currentUser"
     :current-user="currentUser"
     @logout="logout"
   />

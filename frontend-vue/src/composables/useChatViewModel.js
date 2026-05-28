@@ -87,6 +87,8 @@ const normalizeIncomingMessage = (data, currentUserId) => {
   }
 }
 
+// useChatViewModel owns the chat screen state: room list, message cache,
+// WebSocket lifecycle, friend requests, read receipts, and history loading.
 export const useChatViewModel = (currentUser) => {
   const rooms = ref(DEFAULT_ROOMS.map((room) => ({
     ...room,
@@ -136,6 +138,8 @@ export const useChatViewModel = (currentUser) => {
     })
   }
 
+  // Every message can arrive from history, live WebSocket events, or the Python
+  // stock bot. This path normalizes and de-duplicates before touching UI state.
   const appendMessage = (data, options = {}) => {
     const message = normalizeIncomingMessage(data, currentUser.id)
     const conversationId = message.conversationId || activeRoom.value.conversationId
@@ -261,6 +265,8 @@ export const useChatViewModel = (currentUser) => {
     }
   }
 
+  // The backend opens one WebSocket per active conversation so the server can
+  // mark read receipts and push only relevant Change Stream events.
   const connect = () => {
     const url = new URL(WS_URL)
     url.searchParams.set('user_id', currentUser.id)
@@ -531,6 +537,8 @@ export const useChatViewModel = (currentUser) => {
     }
   }
 
+  // The server trusts the WebSocket query user_id as the sender and recomputes
+  // conversation_id, so the client only supplies the intended recipient/text.
   const sendMessage = () => {
     const text = userInput.value.trim()
     if (!text) return
@@ -552,6 +560,8 @@ export const useChatViewModel = (currentUser) => {
     userInput.value = ''
   }
 
+  // Initial load intentionally fetches reference data before opening the socket
+  // so live events can merge into known rooms instead of creating duplicates.
   onMounted(async () => {
     await loadUsers()
     await loadFriends()
