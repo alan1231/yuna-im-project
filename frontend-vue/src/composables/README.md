@@ -30,7 +30,8 @@ This directory owns shared Vue state and screen-level behavior.
 - Current attachments are stored as small data URLs in message documents, so keep the size limit conservative.
 - Images larger than the limit are compressed client-side before attachment when possible.
 - Non-image files cannot be reliably compressed in the browser and must already fit the size limit.
-- Image attachments render inline; other file types render as a file link.
+- Image attachments render inline and open in an in-app preview modal when clicked.
+- Other file types render as a file link.
 - A production version should upload files to object storage and persist only metadata plus a URL in MongoDB.
 
 ## WebSocket Rules
@@ -38,4 +39,5 @@ This directory owns shared Vue state and screen-level behavior.
 - Keep one WebSocket per user session.
 - Do not reconnect on every room switch.
 - Send an `active_conversation` control message when the selected room changes.
-- Normal chat sends should include only the intended recipient and text; the Go backend owns sender identity and `conversation_id` recomputation.
+- Normal chat sends should include only the intended recipient and text/attachment; the Go backend owns sender identity and `conversation_id` recomputation.
+
