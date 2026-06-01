@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -33,6 +34,192 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return isOriginAllowed(r.Header.Get("Origin"))
 	},
+}
+
+type wsClient struct {
+	userID string
+	send   chan websocketEvent
+
+	mu                   sync.RWMutex
+	activeConversationID string
+}
+
+func newWSClient(userID string, conversationID string) *wsClient {
+	return &wsClient{
+		userID:               userID,
+		activeConversationID: conversationID,
+		send:                 make(chan websocketEvent, 32),
+	}
+}
+
+func (client *wsClient) activeConversation() string {
+	client.mu.RLock()
+	defer client.mu.RUnlock()
+
+	return client.activeConversationID
+}
+
+func (client *wsClient) setActiveConversation(conversationID string) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+
+	client.activeConversationID = conversationID
+}
+
+type changeStreamEvent struct {
+	OperationType string `bson:"operationType"`
+	Namespace     struct {
+		Collection string `bson:"coll"`
+	} `bson:"ns"`
+	FullDocument bson.M `bson:"fullDocument"`
+}
+
+type changeStreamHub struct {
+	mu      sync.Mutex
+	clients map[*wsClient]struct{}
+	mongo   *mongo.Client
+}
+
+func newChangeStreamHub(client *mongo.Client) *changeStreamHub {
+	return &changeStreamHub{
+		clients: map[*wsClient]struct{}{},
+		mongo:   client,
+	}
+}
+
+func (hub *changeStreamHub) register(client *wsClient) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	hub.clients[client] = struct{}{}
+}
+
+func (hub *changeStreamHub) unregister(client *wsClient) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	if _, ok := hub.clients[client]; ok {
+		delete(hub.clients, client)
+		close(client.send)
+	}
+}
+
+func (hub *changeStreamHub) run(ctx context.Context) {
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.D{
+			{Key: "operationType", Value: bson.D{{Key: "$in", Value: bson.A{"insert", "update"}}}},
+			{Key: "ns.coll", Value: bson.D{{Key: "$in", Value: bson.A{
+				collectionName,
+				friendRequestsName,
+				friendsName,
+			}}}},
+		}}},
+	}
+
+	for {
+		if err := hub.watch(ctx, pipeline); err != nil && ctx.Err() == nil {
+			log.Printf("MongoDB Change Stream 中斷，3 秒後重試: %v", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(3 * time.Second):
+			}
+			continue
+		}
+
+		return
+	}
+}
+
+func (hub *changeStreamHub) watch(ctx context.Context, pipeline mongo.Pipeline) error {
+	stream, err := hub.mongo.Database(databaseName).Watch(
+		ctx,
+		pipeline,
+		options.ChangeStream().SetFullDocument(options.UpdateLookup),
+	)
+	if err != nil {
+		return err
+	}
+	defer stream.Close(ctx)
+
+	for stream.Next(ctx) {
+		var event changeStreamEvent
+		if err := stream.Decode(&event); err != nil {
+			log.Printf("Change Stream 事件解析失敗: %v", err)
+			continue
+		}
+
+		hub.publish(ctx, event)
+	}
+
+	return stream.Err()
+}
+
+func (hub *changeStreamHub) publish(ctx context.Context, event changeStreamEvent) {
+	eventType := websocketEventType(event.Namespace.Collection)
+	if eventType == "" {
+		return
+	}
+	if event.Namespace.Collection == collectionName && event.OperationType == "update" {
+		eventType = "read_receipt"
+	}
+
+	message := websocketEvent{
+		Type:    eventType,
+		Payload: event.FullDocument,
+	}
+	type readMark struct {
+		userID         string
+		conversationID string
+	}
+	readMarks := []readMark{}
+
+	hub.mu.Lock()
+	for client := range hub.clients {
+		if !eventMatchesClient(event, client) {
+			continue
+		}
+
+		if eventType == "message" {
+			conversation, _ := event.FullDocument["conversation_id"].(string)
+			recipient, _ := event.FullDocument["recipient_id"].(string)
+			if conversation == client.activeConversation() && recipient == client.userID {
+				readMarks = append(readMarks, readMark{
+					userID:         client.userID,
+					conversationID: conversation,
+				})
+			}
+		}
+
+		select {
+		case client.send <- message:
+		default:
+			log.Printf("WebSocket client send buffer full: user_id=%s", client.userID)
+		}
+	}
+	hub.mu.Unlock()
+
+	for _, mark := range readMarks {
+		markConversationRead(ctx, hub.mongo, mark.userID, mark.conversationID)
+	}
+}
+
+func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
+	switch event.Namespace.Collection {
+	case collectionName:
+		senderID, _ := event.FullDocument["sender_id"].(string)
+		recipientID, _ := event.FullDocument["recipient_id"].(string)
+		return senderID == client.userID || recipientID == client.userID
+	case friendRequestsName:
+		toUserID, _ := event.FullDocument["to_user_id"].(string)
+		status, _ := event.FullDocument["status"].(string)
+		return toUserID == client.userID && status == "pending"
+	case friendsName:
+		userID, _ := event.FullDocument["user_id"].(string)
+		return userID == client.userID
+	default:
+		return false
+	}
 }
 
 func conversationIDFor(userA string, userB string) string {
@@ -455,9 +642,9 @@ func createFriendPair(ctx context.Context, client *mongo.Client, request friendR
 	return nil
 }
 
-// handleConnections owns one WebSocket session: it registers presence, starts a
-// MongoDB change-stream fanout goroutine, and persists incoming messages.
-func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore) {
+// handleConnections owns one WebSocket session: it registers presence, joins
+// the shared Change Stream hub, and persists incoming messages.
+func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub) {
 	userID := r.URL.Query().Get("user_id")
 	conversationID := r.URL.Query().Get("conversation_id")
 	if userID == "" || conversationID == "" {
@@ -484,7 +671,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 	fmt.Printf("Vue 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
 
-	go watchAndPush(ctx, ws, client, userID, conversationID)
+	wsClient := newWSClient(userID, conversationID)
+	hub.register(wsClient)
+	defer hub.unregister(wsClient)
+	go writeWebSocketEvents(ctx, ws, wsClient)
 	markConversationRead(ctx, client, userID, conversationID)
 
 	collection := client.Database(databaseName).Collection(collectionName)
@@ -494,6 +684,16 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		if err := ws.ReadJSON(&msg); err != nil {
 			log.Printf("WebSocket 連線結束: %v", err)
 			return
+		}
+
+		if eventType, _ := msg["type"].(string); eventType == "active_conversation" {
+			nextConversationID, _ := msg["conversation_id"].(string)
+			nextConversationID = strings.TrimSpace(nextConversationID)
+			if nextConversationID != "" && conversationIncludesUser(nextConversationID, userID) {
+				wsClient.setActiveConversation(nextConversationID)
+				markConversationRead(ctx, client, userID, nextConversationID)
+			}
+			continue
 		}
 
 		recipientID, _ := msg["recipient_id"].(string)
@@ -514,6 +714,24 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		}
 
 		fmt.Printf("收到訊息並存入資料庫: %v\n", msg["text"])
+	}
+}
+
+func writeWebSocketEvents(ctx context.Context, ws *websocket.Conn, client *wsClient) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-client.send:
+			if !ok {
+				return
+			}
+			if err := ws.WriteJSON(event); err != nil {
+				log.Printf("WebSocket 推播失敗: %v", err)
+				return
+			}
+			fmt.Printf("已即時推播 %s 到前端\n", event.Type)
+		}
 	}
 }
 
@@ -640,7 +858,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 			ConversationID:      conversationID,
 			RecipientID:         otherID,
 			DisplayName:         displayName,
-			LastMessage:         fmt.Sprint(message["text"]),
+			LastMessage:         messagePreviewText(message),
 			LastMessageAt:       messageTime(message["time"]),
 			LastMessageSenderID: senderID,
 			LastMessageReadAt:   messageTimePtr(message["read_at"]),
@@ -660,6 +878,25 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 	if err := json.NewEncoder(w).Encode(conversations); err != nil {
 		log.Printf("對話清單回應 JSON 失敗: %v", err)
 	}
+}
+
+func messagePreviewText(message bson.M) string {
+	text := strings.TrimSpace(fmt.Sprint(message["text"]))
+	if text != "" && text != "<nil>" {
+		return text
+	}
+
+	attachmentURL, _ := message["attachment_url"].(string)
+	if attachmentURL != "" {
+		return "已傳送檔案"
+	}
+
+	imageURL, _ := message["image_url"].(string)
+	if imageURL != "" {
+		return "已傳送圖片"
+	}
+
+	return ""
 }
 
 func loadFriendNames(ctx context.Context, client *mongo.Client, userID string) map[string]string {
@@ -757,91 +994,6 @@ func markConversationRead(ctx context.Context, client *mongo.Client, userID stri
 	}
 }
 
-// watchAndPush turns MongoDB Change Stream events into WebSocket events. This
-// lets Go and the Python bot communicate through persisted Mongo writes.
-func watchAndPush(ctx context.Context, ws *websocket.Conn, client *mongo.Client, userID string, conversationID string) {
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.D{
-			{Key: "operationType", Value: bson.D{{Key: "$in", Value: bson.A{"insert", "update"}}}},
-			{Key: "$or", Value: bson.A{
-				bson.D{
-					{Key: "ns.coll", Value: collectionName},
-					{Key: "$or", Value: bson.A{
-						bson.D{{Key: "fullDocument.sender_id", Value: userID}},
-						bson.D{{Key: "fullDocument.recipient_id", Value: userID}},
-						bson.D{{Key: "fullDocument.conversation_id", Value: conversationID}},
-					}},
-				},
-				bson.D{
-					{Key: "ns.coll", Value: friendRequestsName},
-					{Key: "fullDocument.to_user_id", Value: userID},
-					{Key: "fullDocument.status", Value: "pending"},
-				},
-				bson.D{
-					{Key: "ns.coll", Value: friendsName},
-					{Key: "fullDocument.user_id", Value: userID},
-				},
-			}},
-		}}},
-	}
-
-	stream, err := client.Database(databaseName).Watch(
-		ctx,
-		pipeline,
-		options.ChangeStream().SetFullDocument(options.UpdateLookup),
-	)
-	if err != nil {
-		log.Printf("無法監控 MongoDB Change Stream: %v", err)
-		return
-	}
-	defer stream.Close(ctx)
-
-	for stream.Next(ctx) {
-		var event struct {
-			OperationType string `bson:"operationType"`
-			Namespace     struct {
-				Collection string `bson:"coll"`
-			} `bson:"ns"`
-			FullDocument bson.M `bson:"fullDocument"`
-		}
-
-		if err := stream.Decode(&event); err != nil {
-			log.Printf("Change Stream 事件解析失敗: %v", err)
-			continue
-		}
-
-		eventType := websocketEventType(event.Namespace.Collection)
-		if eventType == "" {
-			continue
-		}
-		if event.Namespace.Collection == collectionName && event.OperationType == "update" {
-			eventType = "read_receipt"
-		}
-
-		if eventType == "message" {
-			conversation, _ := event.FullDocument["conversation_id"].(string)
-			recipient, _ := event.FullDocument["recipient_id"].(string)
-			if conversation == conversationID && recipient == userID {
-				markConversationRead(ctx, client, userID, conversationID)
-			}
-		}
-
-		if err := ws.WriteJSON(websocketEvent{
-			Type:    eventType,
-			Payload: event.FullDocument,
-		}); err != nil {
-			log.Printf("WebSocket 推播失敗: %v", err)
-			return
-		}
-
-		fmt.Printf("已即時推播 %s 到前端\n", eventType)
-	}
-
-	if err := stream.Err(); err != nil && ctx.Err() == nil {
-		log.Printf("MongoDB Change Stream 中斷: %v", err)
-	}
-}
-
 func websocketEventType(collection string) string {
 	switch collection {
 	case collectionName:
@@ -886,10 +1038,14 @@ func Run(cfg Config) error {
 		return err
 	}
 	presence := NewPresenceStore(redisClient, client)
+	hubCtx, stopHub := context.WithCancel(context.Background())
+	defer stopHub()
+	hub := newChangeStreamHub(client)
+	go hub.run(hubCtx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(w, r, client, presence)
+		handleConnections(w, r, client, presence, hub)
 	})
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		handleUsers(w, r, client)

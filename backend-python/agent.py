@@ -109,7 +109,7 @@ def format_stock_reply(stock_data):
         dividend_text = f"股利發放情況: {dividend}"
 
     return (
-        f"{stock_data['symbol']} 股價: {stock_data['price']}\n"
+        f"{stock_data['symbol']} 今日股價: {stock_data['price']}\n"
         f"漲跌幅: {stock_data['change_pct']}%\n"
         f"{dividend_text}"
     )

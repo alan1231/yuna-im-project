@@ -24,6 +24,7 @@ const {
   activeRoomId,
   messages,
   userInput,
+  fileAttachment,
   isConnected,
   connectionError,
   roomError,
@@ -31,6 +32,8 @@ const {
   selectRoom,
   startChatWithUser,
   addFriend,
+  attachFile,
+  clearFileAttachment,
   refreshFriends,
   sendMessage,
 } = useChatViewModel(props.currentUser)
@@ -99,6 +102,8 @@ onUnmounted(() => {
 
       <ChatComposer
         v-model="userInput"
+        :file-attachment="fileAttachment"
+        :allow-attachments="activeRoom.id !== 'stock_bot'"
         :can-send="canSend"
         :placeholder="
           activeRoom.id === 'stock_bot'
@@ -106,6 +111,8 @@ onUnmounted(() => {
             : `傳訊息給 ${activeRoom.name}...`
         "
         :submit-label="activeRoom.id === 'stock_bot' ? '分析' : '送出'"
+        @attach-file="attachFile"
+        @clear-file="clearFileAttachment"
         @send="sendMessage"
       />
     </section>

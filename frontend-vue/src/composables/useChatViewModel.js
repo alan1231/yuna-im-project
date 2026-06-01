@@ -6,6 +6,10 @@ const API_URL = `http://${API_HOST}:8080`
 const WS_URL = `ws://${API_HOST}:8080/ws`
 const STOCK_BOT_ID = 'stock_bot'
 const STOCK_BOT_NAME = 'Stock_Bot'
+const MAX_MESSAGES_PER_CONVERSATION = 200
+const MAX_CACHED_CONVERSATIONS = 30
+const MAX_HANDLED_REQUEST_IDS = 100
+const ATTACHMENT_MESSAGE_FALLBACK = '已傳送檔案'
 const DEFAULT_ROOMS = [
   {
     id: STOCK_BOT_ID,
@@ -81,6 +85,10 @@ const normalizeIncomingMessage = (data, currentUserId) => {
     conversationId,
     isSelf: senderId === currentUserId,
     text: data.text || '',
+    attachmentUrl: data.attachment_url || data.attachmentUrl || data.image_url || data.imageUrl || '',
+    attachmentName: data.attachment_name || data.attachmentName || data.image_name || data.imageName || '',
+    attachmentType: data.attachment_type || data.attachmentType || data.image_type || data.imageType || '',
+    attachmentSize: data.attachment_size || data.attachmentSize || data.image_size || data.imageSize || 0,
     changePercent: resolveChangePercent(data),
     sentAt: data.sentAt || data.time || getCurrentTime(),
     readAt,
@@ -106,12 +114,14 @@ export const useChatViewModel = (currentUser) => {
     Object.fromEntries(rooms.value.map((room) => [room.conversationId, []])),
   )
   const userInput = ref('')
+  const fileAttachment = ref(null)
   const isConnected = ref(false)
   const connectionError = ref('')
   const roomError = ref('')
   const handledRequestIds = new Set()
   const loadedConversationIds = new Set()
   const messageKeysByConversation = new Map()
+  const conversationCacheAccess = new Map()
 
   let socket = null
 
@@ -124,7 +134,7 @@ export const useChatViewModel = (currentUser) => {
   })
 
   const canSend = computed(() => {
-    return userInput.value.trim().length > 0
+    return userInput.value.trim().length > 0 || Boolean(fileAttachment.value)
   })
 
   const addSystemMessage = (text) => {
@@ -136,6 +146,7 @@ export const useChatViewModel = (currentUser) => {
       text,
       sentAt: getCurrentTime(),
     })
+    trimConversationMessages(conversationId)
   }
 
   // Every message can arrive from history, live WebSocket events, or the Python
@@ -175,6 +186,8 @@ export const useChatViewModel = (currentUser) => {
     }
 
     messagesByConversation.value[conversationId].push(message)
+    trimConversationMessages(conversationId)
+    touchConversationCache(conversationId)
     updateRoomSummary(conversationId, message, options)
   }
 
@@ -182,7 +195,7 @@ export const useChatViewModel = (currentUser) => {
     const room = rooms.value.find((item) => item.conversationId === conversationId)
     if (!room) return
 
-    room.lastMessage = message.text
+    room.lastMessage = message.text || (message.attachmentUrl ? ATTACHMENT_MESSAGE_FALLBACK : '')
     room.lastMessageAt = formatRoomTime(message.sentAt)
     room.lastMessageTimeMs = getTimeMs(message.sentAt)
     room.lastMessageIsSelf = message.isSelf
@@ -226,13 +239,72 @@ export const useChatViewModel = (currentUser) => {
       message.conversationId,
       message.sentAt,
       message.text,
+      message.attachmentName,
+      message.attachmentSize,
     ].join('|')
+  }
+
+  const touchConversationCache = (conversationId) => {
+    if (!conversationId) return
+
+    conversationCacheAccess.set(conversationId, Date.now())
+    pruneCachedConversations()
+  }
+
+  const trimConversationMessages = (conversationId) => {
+    const conversationMessages = messagesByConversation.value[conversationId]
+    if (!conversationMessages || conversationMessages.length <= MAX_MESSAGES_PER_CONVERSATION) return
+
+    messagesByConversation.value[conversationId] = conversationMessages.slice(-MAX_MESSAGES_PER_CONVERSATION)
+    rebuildMessageKeys(conversationId)
+  }
+
+  const rebuildMessageKeys = (conversationId) => {
+    const keys = new Set()
+    const conversationMessages = messagesByConversation.value[conversationId] || []
+    conversationMessages.forEach((message) => {
+      keys.add(getMessageKey(message))
+    })
+    messageKeysByConversation.set(conversationId, keys)
+  }
+
+  const pruneCachedConversations = () => {
+    const conversationIds = Object.keys(messagesByConversation.value)
+    if (conversationIds.length <= MAX_CACHED_CONVERSATIONS) return
+
+    const protectedConversationIds = new Set([
+      activeRoom.value?.conversationId,
+      getConversationId(currentUser.id, STOCK_BOT_ID),
+    ])
+    const candidates = conversationIds
+      .filter((conversationId) => !protectedConversationIds.has(conversationId))
+      .sort((a, b) => {
+        return (conversationCacheAccess.get(a) || 0) - (conversationCacheAccess.get(b) || 0)
+      })
+
+    const nextMessagesByConversation = { ...messagesByConversation.value }
+    while (Object.keys(nextMessagesByConversation).length > MAX_CACHED_CONVERSATIONS && candidates.length) {
+      const conversationId = candidates.shift()
+      delete nextMessagesByConversation[conversationId]
+      loadedConversationIds.delete(conversationId)
+      messageKeysByConversation.delete(conversationId)
+      conversationCacheAccess.delete(conversationId)
+    }
+    messagesByConversation.value = nextMessagesByConversation
+  }
+
+  const rememberHandledRequest = (requestId) => {
+    handledRequestIds.add(requestId)
+    if (handledRequestIds.size <= MAX_HANDLED_REQUEST_IDS) return
+
+    const oldestRequestId = handledRequestIds.values().next().value
+    handledRequestIds.delete(oldestRequestId)
   }
 
   const handleFriendRequest = async (request) => {
     if (!request?.request_id || handledRequestIds.has(request.request_id)) return
 
-    handledRequestIds.add(request.request_id)
+    rememberHandledRequest(request.request_id)
     const accepted = window.confirm(`${request.from_display_name} 想加你為好友，是否同意？`)
     await respondFriendRequest(request.request_id, accepted)
   }
@@ -265,8 +337,8 @@ export const useChatViewModel = (currentUser) => {
     }
   }
 
-  // The backend opens one WebSocket per active conversation so the server can
-  // mark read receipts and push only relevant Change Stream events.
+  // Keep one WebSocket per user and send active-room changes as control events.
+  // That lets the backend share one Mongo Change Stream across all clients.
   const connect = () => {
     const url = new URL(WS_URL)
     url.searchParams.set('user_id', currentUser.id)
@@ -276,6 +348,7 @@ export const useChatViewModel = (currentUser) => {
     socket.onopen = () => {
       isConnected.value = true
       connectionError.value = ''
+      sendActiveConversation()
       console.log('已連線至 Go 後端')
     }
 
@@ -312,6 +385,21 @@ export const useChatViewModel = (currentUser) => {
     connect()
   }
 
+  const sendActiveConversation = () => {
+    if (!socket || socket.readyState === WebSocket.CLOSED) {
+      connect()
+      return
+    }
+    if (socket.readyState !== WebSocket.OPEN) return
+
+    socket.send(
+      JSON.stringify({
+        type: 'active_conversation',
+        conversation_id: activeRoom.value.conversationId,
+      }),
+    )
+  }
+
   const appendRoom = (room) => {
     const existingRoom = rooms.value.find((item) => item.id === room.id)
     if (existingRoom) {
@@ -340,6 +428,7 @@ export const useChatViewModel = (currentUser) => {
       messagesByConversation.value[room.conversationId] = []
     }
 
+    touchConversationCache(room.conversationId)
     sortRooms()
     return room
   }
@@ -380,6 +469,7 @@ export const useChatViewModel = (currentUser) => {
       messages.forEach((message) => appendMessage(message, { isHistory: true }))
       room.unreadCount = 0
       loadedConversationIds.add(room.conversationId)
+      touchConversationCache(room.conversationId)
     } catch (error) {
       console.error('載入歷史訊息失敗:', error)
       roomError.value = '歷史訊息載入失敗'
@@ -466,7 +556,7 @@ export const useChatViewModel = (currentUser) => {
       const requests = await response.json()
       for (const request of requests) {
         if (handledRequestIds.has(request.request_id)) continue
-        handledRequestIds.add(request.request_id)
+        rememberHandledRequest(request.request_id)
 
         const accepted = window.confirm(`${request.from_display_name} 想加你為好友，是否同意？`)
         await respondFriendRequest(request.request_id, accepted)
@@ -497,11 +587,13 @@ export const useChatViewModel = (currentUser) => {
 
     activeRoomId.value = roomId
     userInput.value = ''
+    fileAttachment.value = null
     activeRoom.value.unreadCount = 0
+    touchConversationCache(activeRoom.value.conversationId)
     loadMessagesForRoom(activeRoom.value).catch((error) => {
       console.error('切換聊天室載入歷史訊息失敗:', error)
     })
-    reconnect()
+    sendActiveConversation()
   }
 
   const startChatWithUser = (user) => {
@@ -537,11 +629,20 @@ export const useChatViewModel = (currentUser) => {
     }
   }
 
+  const attachFile = (file) => {
+    fileAttachment.value = file
+  }
+
+  const clearFileAttachment = () => {
+    fileAttachment.value = null
+  }
+
   // The server trusts the WebSocket query user_id as the sender and recomputes
   // conversation_id, so the client only supplies the intended recipient/text.
   const sendMessage = () => {
     const text = userInput.value.trim()
-    if (!text) return
+    const attachment = fileAttachment.value
+    if (!text && !attachment) return
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       connectionError.value = '目前尚未連線，正在重新連線。'
       reconnect()
@@ -555,9 +656,14 @@ export const useChatViewModel = (currentUser) => {
         recipient_id: activeRoom.value.recipientId,
         conversation_id: activeRoom.value.conversationId,
         text,
+        attachment_url: attachment?.url || '',
+        attachment_name: attachment?.name || '',
+        attachment_type: attachment?.type || '',
+        attachment_size: attachment?.size || 0,
       }),
     )
     userInput.value = ''
+    fileAttachment.value = null
   }
 
   // Initial load intentionally fetches reference data before opening the socket
@@ -581,6 +687,7 @@ export const useChatViewModel = (currentUser) => {
     activeRoomId,
     messages,
     userInput,
+    fileAttachment,
     isConnected,
     connectionError,
     roomError,
@@ -588,6 +695,8 @@ export const useChatViewModel = (currentUser) => {
     selectRoom,
     startChatWithUser,
     addFriend,
+    attachFile,
+    clearFileAttachment,
     refreshFriends: loadFriends,
     sendMessage,
   }
