@@ -11,6 +11,7 @@ const props = defineProps({
 
 const isSelf = computed(() => props.message.isSelf)
 const changeClass = computed(() => getChangeClass(props.message))
+const isPending = computed(() => Boolean(props.message.isPending))
 const hasText = computed(() => Boolean(props.message.text))
 const hasAttachment = computed(() => Boolean(props.message.attachmentUrl))
 const isImageAttachment = computed(() => props.message.attachmentType?.startsWith('image/'))
@@ -44,7 +45,7 @@ const closeImagePreview = () => {
 </script>
 
 <template>
-  <article class="message" :class="{ 'message-self': isSelf }">
+  <article class="message" :class="{ 'message-self': isSelf, 'message-pending': isPending }">
     <a
       v-if="hasAttachment && isImageAttachment"
       class="message-image-link"
@@ -70,8 +71,13 @@ const closeImagePreview = () => {
       <span class="message-file-icon" aria-hidden="true">檔</span>
       <span>{{ attachmentLabel }}</span>
     </a>
-    <p v-if="hasText" :class="changeClass">{{ message.text }}</p>
-    <footer class="message-footer">
+    <div v-if="isPending" class="typing-indicator" aria-label="股票機器人正在回覆">
+      <span />
+      <span />
+      <span />
+    </div>
+    <p v-else-if="hasText" :class="changeClass">{{ message.text }}</p>
+    <footer v-if="!isPending" class="message-footer">
       <time v-if="sentTime">{{ sentTime }}</time>
       <span
         v-if="isSelf"
