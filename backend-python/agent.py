@@ -1,19 +1,53 @@
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import math
+import os
 import re
+import threading
 import time
 
 STOCK_BOT_ID = "stock_bot"
 STOCK_BOT_NAME = "Stock_Bot"
+DEFAULT_MONGO_URI = "mongodb://localhost:27017/?directConnection=true"
+DEFAULT_DATABASE_NAME = "yuna_chat"
+
+
+def get_env(name, fallback):
+    value = os.getenv(name, "").strip()
+    return value or fallback
+
 
 def get_messages_collection():
     from pymongo import MongoClient
 
     # The bot communicates with Go through MongoDB: it watches user messages and
     # writes bot replies back into the same messages collection.
-    client = MongoClient("mongodb://localhost:27017/?directConnection=true")
-    db = client["yuna_chat"]
+    client = MongoClient(get_env("MONGO_URI", DEFAULT_MONGO_URI))
+    db = client[get_env("DATABASE_NAME", DEFAULT_DATABASE_NAME)]
     return db["messages"]
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path not in ("/", "/healthz"):
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"stock bot running\n")
+
+    def log_message(self, format, *args):
+        return
+
+
+def start_health_server():
+    port = int(get_env("PORT", "10001"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
+    print(f"Health server listening on :{port}", flush=True)
+    server.serve_forever()
 
 def extract_stock_symbol(command_text):
     text = command_text.strip().upper()
@@ -286,4 +320,5 @@ def start_ai_agent():
             time.sleep(3)
 
 if __name__ == "__main__":
+    threading.Thread(target=start_health_server, daemon=True).start()
     start_ai_agent()
