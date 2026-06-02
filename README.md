@@ -46,11 +46,19 @@ docker compose up -d
 
 更細的工程脈絡與設計決策在這些文件：
 
+- [Current project status](PROJECT_STATUS.md)
 - [Project context](PROJECT_CONTEXT.md)
 - [Mobile API contract](docs/API_CONTRACT.md)
 - [Go chat backend context](backend-go/internal/chat/README.md)
 - [Vue composables context](frontend-vue/src/composables/README.md)
 - [Architecture decisions](docs/decisions)
+
+## 分支與部署
+
+- `main`：雲端部署分支，Render 和 Vercel 從這個分支部署。
+- `dev`：本地開發與測試分支。
+
+平常在 `dev` 修改；本機測試通過後合併到 `main`，再 push `main` 觸發雲端部署。
 
 ## Flutter Mobile
 
