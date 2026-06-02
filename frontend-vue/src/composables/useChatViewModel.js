@@ -1,9 +1,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { API_URL, WS_URL } from '../config/api'
 import { resolveChangePercent } from '../utils/stockChange'
 
-const API_HOST = window.location.hostname || 'localhost'
-const API_URL = `http://${API_HOST}:8080`
-const WS_URL = `ws://${API_HOST}:8080/ws`
 const STOCK_BOT_ID = 'stock_bot'
 const STOCK_BOT_NAME = 'Stock_Bot'
 const MAX_MESSAGES_PER_CONVERSATION = 200
