@@ -567,11 +567,17 @@ export const useChatViewModel = (currentUser) => {
 
       const conversations = await response.json()
       conversations.forEach((conversation) => {
+        const isStockBot = conversation.recipient_id === STOCK_BOT_ID
+        const displayName = isStockBot ? t('chat.stockBotName') : conversation.display_name
         appendRoom({
           id: conversation.recipient_id,
-          name: conversation.display_name,
-          description: conversation.is_friend ? t('chat.friend') : t('chat.conversation'),
-          initials: getInitials(conversation.display_name),
+          name: displayName,
+          description: isStockBot
+            ? t('chat.stockBotDescription')
+            : conversation.is_friend
+              ? t('chat.friend')
+              : t('chat.conversation'),
+          initials: isStockBot ? t('chat.stockBotInitial') : getInitials(displayName),
           recipientId: conversation.recipient_id,
           conversationId: conversation.conversation_id,
           isFriend: Boolean(conversation.is_friend),
