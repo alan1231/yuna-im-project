@@ -13,10 +13,15 @@ The server reads these environment variables and falls back to local development
 | `SERVER_ADDR` | `:8080` |
 | `ALLOWED_ORIGINS` | `*` |
 | `ADMIN_TOKEN` | empty |
+| `STOCK_BOT_HEALTH_URL` | empty |
 
 MongoDB stores durable chat data. Redis stores short-lived presence state such as online keys and per-user WebSocket connection counts.
 
 When `ADMIN_TOKEN` is set, admin APIs require either `X-Admin-Token: <token>` or `Authorization: Bearer <token>`.
+
+When `STOCK_BOT_HEALTH_URL` is set, messages sent to `stock_bot` trigger a
+background HTTP request to that URL. In the Render MVP deployment this wakes the
+Python stock bot, for example `https://python-ai-nqi6.onrender.com/healthz`.
 
 ## Admin APIs
 

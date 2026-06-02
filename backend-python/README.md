@@ -24,6 +24,11 @@ the same `messages` collection. It also starts a tiny HTTP health server on
 `/healthz` so deployment platforms can keep the process running as a web
 service.
 
+On startup or reconnect, the agent also scans recent unanswered stock-bot
+messages. This handles Render Free sleep: if the bot was asleep when a message
+was inserted, waking `/healthz` starts the process and the scan replies to the
+missed query.
+
 ## Render deployment
 
 Create another Render Web Service from the same GitHub repo:

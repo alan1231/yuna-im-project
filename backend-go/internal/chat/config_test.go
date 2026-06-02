@@ -12,6 +12,7 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("DATABASE_NAME", "")
 	t.Setenv("SERVER_ADDR", "")
 	t.Setenv("ALLOWED_ORIGINS", "")
+	t.Setenv("STOCK_BOT_HEALTH_URL", "")
 
 	cfg := LoadConfig()
 
@@ -42,6 +43,9 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	if cfg.AllowedOrigins != defaultAllowedOrigins {
 		t.Fatalf("AllowedOrigins = %q, want %q", cfg.AllowedOrigins, defaultAllowedOrigins)
 	}
+	if cfg.StockBotHealthURL != "" {
+		t.Fatalf("StockBotHealthURL = %q, want empty", cfg.StockBotHealthURL)
+	}
 }
 
 func TestLoadConfigUsesEnvironment(t *testing.T) {
@@ -54,6 +58,7 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_NAME", "chat_test")
 	t.Setenv("SERVER_ADDR", ":9090")
 	t.Setenv("ALLOWED_ORIGINS", "http://localhost:5173")
+	t.Setenv("STOCK_BOT_HEALTH_URL", "https://python-ai.onrender.com/healthz")
 
 	cfg := LoadConfig()
 
@@ -83,5 +88,8 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	}
 	if cfg.AllowedOrigins != "http://localhost:5173" {
 		t.Fatalf("AllowedOrigins = %q", cfg.AllowedOrigins)
+	}
+	if cfg.StockBotHealthURL != "https://python-ai.onrender.com/healthz" {
+		t.Fatalf("StockBotHealthURL = %q", cfg.StockBotHealthURL)
 	}
 }

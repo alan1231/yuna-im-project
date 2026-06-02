@@ -10,6 +10,7 @@ STOCK_BOT_ID = "stock_bot"
 STOCK_BOT_NAME = "Stock_Bot"
 DEFAULT_MONGO_URI = "mongodb://localhost:27017/?directConnection=true"
 DEFAULT_DATABASE_NAME = "yuna_chat"
+PENDING_LOOKBACK_MINUTES = 20
 
 
 def get_env(name, fallback):
@@ -148,6 +149,75 @@ def format_stock_reply(stock_data):
         f"{dividend_text}"
     )
 
+
+def build_stock_reply(user_text):
+    symbol, validation_error = parse_stock_command(user_text)
+    if validation_error:
+        return validation_error
+    if not symbol:
+        return None
+
+    print(f"🔍 正在查詢股價: {symbol}", flush=True)
+    stock_data = get_stock_price(symbol)
+    return format_stock_reply(stock_data)
+
+
+def has_bot_reply(messages_col, message):
+    sent_at = message.get("time")
+    query = {
+        "sender_id": STOCK_BOT_ID,
+        "recipient_id": message.get("sender_id"),
+        "conversation_id": message.get("conversation_id"),
+        "is_ai": True,
+    }
+    if sent_at:
+        query["time"] = {"$gte": sent_at}
+
+    return messages_col.count_documents(query, limit=1) > 0
+
+
+def insert_bot_reply(messages_col, message, reply_text):
+    messages_col.insert_one({
+        "sender": STOCK_BOT_NAME,
+        "sender_id": STOCK_BOT_ID,
+        "recipient_id": message["sender_id"],
+        "conversation_id": message["conversation_id"],
+        "text": reply_text,
+        "time": datetime.now(timezone.utc),
+        "is_ai": True
+    })
+    print("📤 已回覆股價資訊", flush=True)
+
+
+def process_stock_message(messages_col, message):
+    sender_id = message.get("sender_id")
+    conversation_id = message.get("conversation_id")
+    if not sender_id or not conversation_id:
+        print("略過缺少 sender_id 或 conversation_id 的訊息", flush=True)
+        return
+
+    reply_text = build_stock_reply(str(message.get("text", "")).upper())
+    if not reply_text:
+        return
+
+    insert_bot_reply(messages_col, message, reply_text)
+
+
+def process_recent_unanswered_messages(messages_col):
+    since = datetime.now(timezone.utc) - timedelta(minutes=PENDING_LOOKBACK_MINUTES)
+    query = {
+        "recipient_id": STOCK_BOT_ID,
+        "sender": {"$ne": STOCK_BOT_NAME},
+        "is_ai": {"$ne": True},
+        "time": {"$gte": since},
+    }
+
+    for message in messages_col.find(query).sort("time", 1).limit(20):
+        if has_bot_reply(messages_col, message):
+            continue
+        print("補處理睡眠期間收到的股票查詢", flush=True)
+        process_stock_message(messages_col, message)
+
 def is_valid_number(value):
     try:
         return value is not None and not math.isnan(float(value))
@@ -271,6 +341,7 @@ def start_ai_agent():
     while True:
         try:
             messages_col = get_messages_collection()
+            process_recent_unanswered_messages(messages_col)
 
             with messages_col.watch(pipeline) as stream:
                 print("📡 正在監聽聊天室訊息", flush=True)
@@ -280,39 +351,7 @@ def start_ai_agent():
                     if new_msg.get("sender") == STOCK_BOT_NAME or new_msg.get("is_ai") is True:
                         continue
 
-                    sender_id = new_msg.get("sender_id")
-                    conversation_id = new_msg.get("conversation_id")
-                    if not sender_id or not conversation_id:
-                        print("略過缺少 sender_id 或 conversation_id 的訊息", flush=True)
-                        continue
-
-                    user_text = str(new_msg.get('text', '')).upper()
-
-                    # 判斷是否為查詢指令 (例如 2337、$2337、AVGO 或 $AVGO)
-                    symbol, validation_error = parse_stock_command(user_text)
-                    if validation_error:
-                        reply_text = validation_error
-                    elif symbol:
-                        print(f"🔍 正在查詢股價: {symbol}", flush=True)
-
-                        # 呼叫金融套件抓資料
-                        stock_data = get_stock_price(symbol)
-                        reply_text = format_stock_reply(stock_data)
-                    else:
-                        continue
-
-                    # Store the reply as a normal message. Go's Change Stream
-                    # watcher will push it to Vue through WebSocket.
-                    messages_col.insert_one({
-                        "sender": STOCK_BOT_NAME,
-                        "sender_id": STOCK_BOT_ID,
-                        "recipient_id": sender_id,
-                        "conversation_id": conversation_id,
-                        "text": reply_text,
-                        "time": datetime.now(timezone.utc),
-                        "is_ai": True
-                    })
-                    print("📤 已回覆股價資訊", flush=True)
+                    process_stock_message(messages_col, new_msg)
         except KeyboardInterrupt:
             raise
         except Exception as e:
