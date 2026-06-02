@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useChatViewModel } from '../../hooks/useChatViewModel'
 import ChatComposer from './ChatComposer.jsx'
 import ChatHeader from './ChatHeader.jsx'
@@ -6,6 +7,7 @@ import MessageList from './MessageList.jsx'
 import RoomList from './RoomList.jsx'
 
 export default function ChatWindow({ currentUser, onLogout }) {
+  const { t } = useTranslation()
   const [mobileView, setMobileView] = useState('rooms')
   const [wasMobile, setWasMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
   const {
@@ -89,10 +91,10 @@ export default function ChatWindow({ currentUser, onLogout }) {
           canSend={canSend}
           placeholder={
             activeRoom.id === 'stock_bot'
-              ? '輸入股票代號，例如 2330、$TSM...'
-              : `傳訊息給 ${activeRoom.name}...`
+              ? t('chat.stockPlaceholder')
+              : t('chat.messagePlaceholder', { name: activeRoom.name })
           }
-          submitLabel={activeRoom.id === 'stock_bot' ? '分析' : '送出'}
+          submitLabel={activeRoom.id === 'stock_bot' ? t('chat.analyze') : t('chat.send')}
           onAttachFile={attachFile}
           onClearFile={clearFileAttachment}
           onSend={sendMessage}

@@ -1,27 +1,27 @@
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-const formatPresence = (room) => {
-  if (room.online) return '在線'
-  if (!room.lastSeen) return '最近上線時間未知'
+const formatPresence = (room, t, language) => {
+  if (room.online) return t('chat.presence.online')
+  if (!room.lastSeen) return t('chat.presence.unknown')
 
   const lastSeen = new Date(room.lastSeen)
-  if (Number.isNaN(lastSeen.getTime())) return '最近上線時間未知'
-  if (lastSeen.getFullYear() < 2000) return '最近上線時間未知'
+  if (Number.isNaN(lastSeen.getTime())) return t('chat.presence.unknown')
+  if (lastSeen.getFullYear() < 2000) return t('chat.presence.unknown')
 
   const diffMinutes = Math.max(0, Math.floor((Date.now() - lastSeen.getTime()) / 60000))
-  if (diffMinutes < 1) return '上線於不久前'
-  if (diffMinutes < 60) return `最近上線於 ${diffMinutes} 分鐘前`
+  if (diffMinutes < 1) return t('chat.presence.justNow')
+  if (diffMinutes < 60) return t('chat.presence.minutesAgo', { count: diffMinutes })
 
   const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `最近上線於 ${diffHours} 小時前`
+  if (diffHours < 24) return t('chat.presence.hoursAgo', { count: diffHours })
 
   const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `最近上線於 ${diffDays} 天前`
+  if (diffDays < 7) return t('chat.presence.daysAgo', { count: diffDays })
 
-  return `最近上線於 ${lastSeen.toLocaleDateString('zh-TW', {
-    month: 'long',
-    day: 'numeric',
-  })}`
+  return t('chat.presence.date', {
+    date: lastSeen.toLocaleDateString(language, { month: 'long', day: 'numeric' }),
+  })
 }
 
 export default function RoomList({
@@ -36,6 +36,7 @@ export default function RoomList({
   onRefreshFriends,
   onLogout,
 }) {
+  const { i18n, t } = useTranslation()
   const [friendName, setFriendName] = useState('')
   const [searchText, setSearchText] = useState('')
   const [contactSearchText, setContactSearchText] = useState('')
@@ -107,21 +108,21 @@ export default function RoomList({
   }
 
   return (
-    <aside className="room-sidebar" aria-label="聊天清單">
+    <aside className="room-sidebar" aria-label={t('chat.roomListLabel')}>
       {isMenuOpen ? (
-        <button type="button" className="drawer-backdrop" aria-label="關閉選單" onClick={closeDrawer} />
+        <button type="button" className="drawer-backdrop" aria-label={t('chat.closeMenu')} onClick={closeDrawer} />
       ) : null}
 
-      <aside className={`side-drawer ${isMenuOpen ? 'side-drawer-open' : ''}`} aria-label="主選單">
+      <aside className={`side-drawer ${isMenuOpen ? 'side-drawer-open' : ''}`} aria-label={t('chat.mainMenu')}>
         {drawerView === 'menu' ? (
           <>
             <div className="drawer-profile">
               <span className="drawer-avatar">{currentUser.displayName.slice(0, 1).toUpperCase()}</span>
               <div className="drawer-profile-text">
                 <strong>{currentUser.displayName}</strong>
-                <span>目前使用者</span>
+                <span>{t('chat.currentUser')}</span>
               </div>
-              <button type="button" className="drawer-close" aria-label="關閉選單" onClick={closeDrawer}>
+              <button type="button" className="drawer-close" aria-label={t('chat.closeMenu')} onClick={closeDrawer}>
                 ×
               </button>
             </div>
@@ -129,12 +130,12 @@ export default function RoomList({
             <div className="drawer-menu">
               <button type="button" className="drawer-menu-item" onClick={openContacts}>
                 <span className="drawer-menu-icon">◎</span>
-                <span>聯絡人</span>
+                <span>{t('chat.contacts')}</span>
               </button>
 
               <button type="button" className="drawer-menu-item" onClick={onLogout}>
                 <span className="drawer-menu-icon">↪</span>
-                <span>登出</span>
+                <span>{t('chat.logout')}</span>
               </button>
             </div>
           </>
@@ -144,13 +145,13 @@ export default function RoomList({
               <button
                 type="button"
                 className="drawer-back-button"
-                aria-label="返回主選單"
+                aria-label={t('chat.backToMenu')}
                 onClick={() => setDrawerView('menu')}
               >
                 ‹
               </button>
-              <h3>聯絡人</h3>
-              <button type="button" className="drawer-close" aria-label="關閉選單" onClick={closeDrawer}>
+              <h3>{t('chat.contacts')}</h3>
+              <button type="button" className="drawer-close" aria-label={t('chat.closeMenu')} onClick={closeDrawer}>
                 ×
               </button>
             </div>
@@ -159,13 +160,13 @@ export default function RoomList({
               <input
                 value={contactSearchText}
                 type="search"
-                placeholder="搜尋"
+                placeholder={t('chat.contactSearch')}
                 autoComplete="off"
                 onChange={(event) => setContactSearchText(event.target.value)}
               />
             </div>
 
-            <nav className="drawer-contact-list" aria-label="好友列表">
+            <nav className="drawer-contact-list" aria-label={t('chat.contactsLabel')}>
               {visibleFriendRooms.map((friend) => (
                 <button
                   key={friend.id}
@@ -181,13 +182,13 @@ export default function RoomList({
                     </span>
                     <span className="drawer-contact-bottomline">
                       <span className={`presence-text ${friend.online ? 'presence-online' : ''}`}>
-                        {formatPresence(friend)}
+                        {formatPresence(friend, t, i18n.language)}
                       </span>
                       {friend.lastMessageIsSelf ? (
                         <span
                           className={`read-checks ${friend.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                          aria-label={friend.lastMessageReadAt ? '已讀' : '未讀'}
-                          title={friend.lastMessageReadAt ? '已讀' : '未讀'}
+                          aria-label={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                          title={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
                         >
                           <span />
                           {friend.lastMessageReadAt ? <span /> : null}
@@ -202,12 +203,12 @@ export default function RoomList({
                   </span>
                 </button>
               ))}
-              {!visibleFriendRooms.length ? <p className="drawer-empty">尚無符合的好友</p> : null}
+              {!visibleFriendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
             </nav>
 
             <div className="drawer-contact-footer">
               <button type="button" className="drawer-add-toggle" onClick={() => setIsAddFriendModalOpen(true)}>
-                添加聯絡人
+                {t('chat.addContact')}
               </button>
             </div>
           </>
@@ -224,44 +225,44 @@ export default function RoomList({
         >
           <form className="add-contact-modal" onSubmit={submitFriend}>
             <div className="modal-header">
-              <h3>添加聯絡人</h3>
+              <h3>{t('chat.addContact')}</h3>
               <button
                 type="button"
                 className="modal-close"
-                aria-label="關閉新增聯絡人"
+                aria-label={t('chat.addContactClose')}
                 onClick={() => setIsAddFriendModalOpen(false)}
               >
                 ×
               </button>
             </div>
             <label>
-              <span>送出好友邀請</span>
+              <span>{t('chat.addFriendPrompt')}</span>
               <input
                 value={friendName}
                 type="text"
                 maxLength="32"
-                placeholder="輸入朋友名稱"
+                placeholder={t('chat.addFriendPlaceholder')}
                 autoComplete="off"
                 onChange={(event) => setFriendName(event.target.value)}
               />
             </label>
             {error ? <p className="room-error">{error}</p> : null}
             <button type="submit" disabled={!friendName.trim()}>
-              新增
+              {t('chat.add')}
             </button>
           </form>
         </div>
       ) : null}
 
       <div className="room-sidebar-header">
-        <button type="button" className="menu-button" aria-label="開啟選單" onClick={openDrawer}>
+        <button type="button" className="menu-button" aria-label={t('chat.openMenu')} onClick={openDrawer}>
           <span />
           <span />
           <span />
         </button>
         <div>
           <p className="eyebrow">Messages</p>
-          <h2>聊天室</h2>
+          <h2>{t('chat.roomsTitle')}</h2>
         </div>
       </div>
 
@@ -269,13 +270,13 @@ export default function RoomList({
         <input
           value={searchText}
           type="search"
-          placeholder="搜尋聊天或使用者"
+          placeholder={t('chat.sidebarSearchPlaceholder')}
           autoComplete="off"
           onChange={(event) => setSearchText(event.target.value)}
         />
       </div>
 
-      <nav className="room-list" aria-label="聊天與使用者清單">
+      <nav className="room-list" aria-label={t('chat.roomTargetsLabel')}>
         {visibleRooms.map((room) => (
           <button
             key={room.id}
@@ -294,8 +295,8 @@ export default function RoomList({
                 {room.lastMessageIsSelf ? (
                   <span
                     className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                    aria-label={room.lastMessageReadAt ? '已讀' : '未讀'}
-                    title={room.lastMessageReadAt ? '已讀' : '未讀'}
+                    aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                    title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
                   >
                     <span />
                     {room.lastMessageReadAt ? <span /> : null}
@@ -321,13 +322,13 @@ export default function RoomList({
                 <span className="room-name">{user.display_name}</span>
               </span>
               <span className="room-bottomline">
-                <span className="room-preview">可直接聊天</span>
+                <span className="room-preview">{t('chat.directChat')}</span>
               </span>
             </span>
           </button>
         ))}
 
-        {!hasVisibleTargets ? <p className="empty-menu">沒有符合的聊天或使用者</p> : null}
+        {!hasVisibleTargets ? <p className="empty-menu">{t('chat.noTargets')}</p> : null}
       </nav>
     </aside>
   )

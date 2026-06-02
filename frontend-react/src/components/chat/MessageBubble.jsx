@@ -1,8 +1,10 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getChangeClass } from '../../utils/stockChange'
 
 export default function MessageBubble({ message }) {
+  const { i18n, t } = useTranslation()
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false)
   const imagePreviewModal = useRef(null)
   const isSelf = Boolean(message.isSelf)
@@ -10,19 +12,19 @@ export default function MessageBubble({ message }) {
   const hasText = Boolean(message.text)
   const hasAttachment = Boolean(message.attachmentUrl)
   const isImageAttachment = message.attachmentType?.startsWith('image/')
-  const attachmentLabel = message.attachmentName || '檔案'
+  const attachmentLabel = message.attachmentName || t('chat.file')
   const changeClass = getChangeClass(message)
   const sentTime = (() => {
     const date = new Date(message.sentAt)
     if (Number.isNaN(date.getTime())) return message.sentAt || ''
 
-    return date.toLocaleTimeString('zh-TW', {
+    return date.toLocaleTimeString(i18n.language, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     })
   })()
-  const readStatusLabel = isSelf ? (message.readAt ? '已讀' : '未讀') : ''
+  const readStatusLabel = isSelf ? (message.readAt ? t('chat.read') : t('chat.unread')) : ''
 
   useEffect(() => {
     if (isImagePreviewOpen) {
@@ -60,13 +62,13 @@ export default function MessageBubble({ message }) {
             download={attachmentLabel}
           >
             <span className="message-file-icon" aria-hidden="true">
-              檔
+              {t('chat.fileIcon')}
             </span>
             <span>{attachmentLabel}</span>
           </a>
         ) : null}
         {isPending ? (
-          <div className="typing-indicator" aria-label="股票機器人正在回覆">
+          <div className="typing-indicator" aria-label={t('chat.stockBotTyping')}>
             <span />
             <span />
             <span />
@@ -109,8 +111,8 @@ export default function MessageBubble({ message }) {
               <button
                 type="button"
                 className="image-preview-close"
-                aria-label="關閉圖片預覽"
-                title="關閉圖片預覽"
+                aria-label={t('chat.imagePreviewClose')}
+                title={t('chat.imagePreviewClose')}
                 onClick={() => setIsImagePreviewOpen(false)}
               >
                 ×

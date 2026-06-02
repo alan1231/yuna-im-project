@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 export default function AdminUsersTable({
   users = [],
   query = '',
@@ -8,25 +10,27 @@ export default function AdminUsersTable({
   onToggleOnline,
   onRefresh,
 }) {
+  const { t } = useTranslation()
+
   return (
     <section className="admin-section admin-users-section">
       <div className="admin-section-header admin-users-header">
         <div>
           <p className="eyebrow">Users</p>
-          <h2>使用者管理</h2>
+          <h2>{t('admin.usersTitle')}</h2>
         </div>
-        <button className="admin-icon-button" type="button" title="重新整理" onClick={onRefresh}>
+        <button className="admin-icon-button" type="button" title={t('admin.refresh')} onClick={onRefresh}>
           ↻
         </button>
       </div>
 
       <div className="admin-toolbar">
         <label className="admin-search">
-          <span>搜尋</span>
+          <span>{t('admin.search')}</span>
           <input
             value={query}
             type="search"
-            placeholder="user id 或顯示名稱"
+            placeholder={t('admin.searchPlaceholder')}
             onChange={(event) => onSearch(event.target.value)}
           />
         </label>
@@ -43,21 +47,21 @@ export default function AdminUsersTable({
         <table className="admin-table">
           <thead>
             <tr>
-              <th>使用者</th>
-              <th>狀態</th>
-              <th>建立時間</th>
-              <th>最後上線</th>
+              <th>{t('admin.table.user')}</th>
+              <th>{t('admin.table.status')}</th>
+              <th>{t('admin.table.createdAt')}</th>
+              <th>{t('admin.table.lastSeen')}</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && users.length === 0 ? (
               <tr>
-                <td colSpan="4">載入中</td>
+                <td colSpan="4">{t('admin.table.loading')}</td>
               </tr>
             ) : null}
             {!isLoading && users.length === 0 ? (
               <tr>
-                <td colSpan="4">沒有符合條件的使用者</td>
+                <td colSpan="4">{t('admin.table.empty')}</td>
               </tr>
             ) : null}
             {users.map((user) => (

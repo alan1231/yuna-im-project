@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { API_URL } from '../config/api'
 
 const ADMIN_TOKEN_KEY = 'yuna-im-admin-token'
@@ -19,6 +20,7 @@ const formatDateTime = (value) => {
 }
 
 export const useAdminViewModel = () => {
+  const { t } = useTranslation()
   const [stats, setStats] = useState(null)
   const [users, setUsers] = useState([])
   const [query, setQuery] = useState('')
@@ -75,16 +77,16 @@ export const useAdminViewModel = () => {
       setStats(nextStats)
       setUsers(nextUsers)
     } catch (requestError) {
-      console.error('載入後台資料失敗:', requestError)
+      console.error('Admin data load failed:', requestError)
       setError(
         requestError.message === 'unauthorized'
-          ? '管理者權杖不正確。'
-          : '後台資料載入失敗，請確認 Go 後端、MongoDB 與 Redis 已啟動。',
+          ? t('admin.errors.unauthorized')
+          : t('admin.errors.loadFailed'),
       )
     } finally {
       setIsLoading(false)
     }
-  }, [fetchJSON, onlineOnly, query])
+  }, [fetchJSON, onlineOnly, query, t])
 
   const saveToken = (event) => {
     event.preventDefault()

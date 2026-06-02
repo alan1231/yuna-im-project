@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import MessageBubble from './MessageBubble.jsx'
 
 const parseMessageDate = (value) => {
@@ -11,17 +12,17 @@ const dateKey = (value) => {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
-const formatDateLabel = (value) => {
+const formatDateLabel = (value, t, language) => {
   const date = parseMessageDate(value)
   const today = new Date()
   const yesterday = new Date()
   yesterday.setDate(today.getDate() - 1)
 
-  if (dateKey(value) === dateKey(today)) return '今天'
-  if (dateKey(value) === dateKey(yesterday)) return '昨天'
+  if (dateKey(value) === dateKey(today)) return t('chat.today')
+  if (dateKey(value) === dateKey(yesterday)) return t('chat.yesterday')
 
   const sameYear = date.getFullYear() === today.getFullYear()
-  return date.toLocaleDateString('zh-TW', {
+  return date.toLocaleDateString(language, {
     year: sameYear ? undefined : 'numeric',
     month: 'long',
     day: 'numeric',
@@ -29,6 +30,7 @@ const formatDateLabel = (value) => {
 }
 
 export default function MessageList({ messages, activeRoom }) {
+  const { i18n, t } = useTranslation()
   const messageList = useRef(null)
   const messageEnd = useRef(null)
   const messageItems = useMemo(() => {
@@ -41,7 +43,7 @@ export default function MessageList({ messages, activeRoom }) {
         items.push({
           type: 'date',
           key: `date-${currentDateKey}-${index}`,
-          label: formatDateLabel(message.sentAt),
+          label: formatDateLabel(message.sentAt, t, i18n.language),
         })
         previousDateKey = currentDateKey
       }
@@ -54,7 +56,7 @@ export default function MessageList({ messages, activeRoom }) {
     })
 
     return items
-  }, [messages])
+  }, [i18n.language, messages, t])
 
   useEffect(() => {
     requestAnimationFrame(() => {

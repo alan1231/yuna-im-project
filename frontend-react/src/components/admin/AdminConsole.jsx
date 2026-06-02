@@ -1,8 +1,10 @@
+import { useTranslation } from 'react-i18next'
 import AdminStats from './AdminStats.jsx'
 import AdminUsersTable from './AdminUsersTable.jsx'
 import { useAdminViewModel } from '../../hooks/useAdminViewModel'
 
 export default function AdminConsole() {
+  const { t } = useTranslation()
   const {
     stats,
     users,
@@ -24,7 +26,7 @@ export default function AdminConsole() {
       <header className="admin-topbar">
         <div>
           <p className="eyebrow">Admin Console</p>
-          <h1>Yuna IM 後台</h1>
+          <h1>{t('admin.consoleTitle')}</h1>
         </div>
         <form className="admin-token-form" onSubmit={saveToken}>
           <label>
@@ -37,7 +39,7 @@ export default function AdminConsole() {
               onChange={(event) => setTokenInput(event.target.value)}
             />
           </label>
-          <button type="submit">套用</button>
+          <button type="submit">{t('admin.apply')}</button>
         </form>
       </header>
 

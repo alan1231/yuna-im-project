@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 1600
@@ -45,12 +46,13 @@ export default function ChatComposer({
   fileAttachment = null,
   allowAttachments = true,
   canSend,
-  placeholder = '輸入訊息...',
-  submitLabel = '送出',
+  placeholder,
+  submitLabel,
   onAttachFile,
   onClearFile,
   onSend,
 }) {
+  const { t } = useTranslation()
   const fileInput = useRef(null)
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [fileError, setFileError] = useState('')
@@ -97,7 +99,7 @@ export default function ChatComposer({
 
   const attachBlob = async ({ blob, name, type, compressed = false }) => {
     const url = await blobToDataUrl(blob)
-    setFileError(compressed ? '圖片已自動壓縮。' : '')
+    setFileError(compressed ? t('chat.errors.imageCompressed') : '')
     onAttachFile({
       url,
       name,
@@ -124,13 +126,13 @@ export default function ChatComposer({
       }
 
       if (!file.type.startsWith('image/')) {
-        setFileError('檔案需小於 2 MB；目前只有圖片可自動壓縮。')
+        setFileError(t('chat.errors.fileTooLarge'))
         return
       }
 
       const compressedBlob = await compressImageFile(file)
       if (compressedBlob.size > MAX_FILE_SIZE_BYTES) {
-        setFileError('圖片已壓縮，但仍超過 2 MB。請改用較小的圖片。')
+        setFileError(t('chat.errors.imageStillTooLarge'))
         return
       }
 
@@ -141,8 +143,8 @@ export default function ChatComposer({
         compressed: true,
       })
     } catch (error) {
-      console.error('檔案處理失敗:', error)
-      setFileError('檔案處理失敗。')
+      console.error('File processing failed:', error)
+      setFileError(t('chat.errors.fileProcessFailed'))
     } finally {
       setIsProcessingFile(false)
     }
@@ -195,21 +197,21 @@ export default function ChatComposer({
         {fileAttachment ? (
           <div className="file-attachment-preview">
             {isImageAttachment ? (
-              <img src={fileAttachment.url} alt={fileAttachment.name || '待傳送圖片'} />
+              <img src={fileAttachment.url} alt={fileAttachment.name || t('chat.pendingImage')} />
             ) : (
               <span className="file-attachment-icon" aria-hidden="true">
-                檔
+                {t('chat.fileIcon')}
               </span>
             )}
             <span>
-              <strong>{fileAttachment.name || '檔案'}</strong>
+              <strong>{fileAttachment.name || t('chat.file')}</strong>
               {fileSizeLabel ? <small>{fileSizeLabel}</small> : null}
             </span>
             <button
               type="button"
               className="file-attachment-remove"
-              aria-label="移除檔案"
-              title="移除檔案"
+              aria-label={t('chat.removeFile')}
+              title={t('chat.removeFile')}
               onClick={onClearFile}
             >
               ×
@@ -218,12 +220,12 @@ export default function ChatComposer({
         ) : null}
 
         {fileError ? <p className="composer-error">{fileError}</p> : null}
-        {!fileError && isProcessingFile ? <p className="composer-status">正在處理檔案...</p> : null}
+        {!fileError && isProcessingFile ? <p className="composer-status">{t('chat.processingFile')}</p> : null}
 
         <input
           value={value}
           type="text"
-          placeholder={placeholder}
+          placeholder={placeholder || t('chat.inputPlaceholder')}
           autoComplete="off"
           onChange={(event) => onChange(event.target.value)}
         />
@@ -235,16 +237,16 @@ export default function ChatComposer({
         <button
           type="button"
           className="composer-file-button"
-          aria-label="選擇檔案"
-          title="選擇檔案"
+          aria-label={t('chat.chooseFile')}
+          title={t('chat.chooseFile')}
           onClick={openFilePicker}
         >
-          檔案
+          {t('chat.file')}
         </button>
       ) : null}
 
       <button type="submit" disabled={!canSend || isProcessingFile}>
-        {submitLabel}
+        {submitLabel || t('chat.send')}
       </button>
     </form>
   )

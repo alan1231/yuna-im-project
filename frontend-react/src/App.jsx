@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AccountSetup from './components/account/AccountSetup.jsx'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow.jsx'
+import LanguageSwitcher from './components/LanguageSwitcher.jsx'
 import { API_URL } from './config/api'
 
 const USER_PROFILE_KEY = 'stock-analysis-user-profile'
@@ -25,11 +26,14 @@ const createLocalUserId = () => {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<ChatRoute />} />
-      <Route path="/admin" element={<AdminConsole />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      <LanguageSwitcher />
+      <Routes>
+        <Route path="/" element={<ChatRoute />} />
+        <Route path="/admin" element={<AdminConsole />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }
 
@@ -83,7 +87,7 @@ function ChatRoute() {
         displayName: user.display_name,
       })
     } catch (error) {
-      console.error('建立帳號失敗:', error)
+      console.error('Account creation failed:', error)
       setAccountError(t('account.errors.createFailed'))
     } finally {
       window.clearTimeout(wakeHintTimer)
@@ -119,7 +123,7 @@ function ChatRoute() {
         displayName: user.display_name,
       })
     } catch (error) {
-      console.error('登入失敗:', error)
+      console.error('Sign in failed:', error)
       setAccountError(t('account.errors.loginFailed'))
     } finally {
       window.clearTimeout(wakeHintTimer)

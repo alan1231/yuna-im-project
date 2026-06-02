@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { API_URL, WS_URL } from '../config/api'
 import { resolveChangePercent } from '../utils/stockChange'
 
@@ -8,17 +9,6 @@ const STOCK_BOT_PENDING_ID = 'stock-bot-pending'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 const MAX_HANDLED_REQUEST_IDS = 100
-const ATTACHMENT_MESSAGE_FALLBACK = '已傳送檔案'
-const DEFAULT_ROOMS = [
-  {
-    id: STOCK_BOT_ID,
-    name: '股票機器人',
-    description: '台股、美股與股利查詢',
-    initials: '股',
-    recipientId: STOCK_BOT_ID,
-    isFriend: false,
-  },
-]
 
 const getConversationId = (userId, recipientId) => {
   const [firstId, secondId] = [userId, recipientId].sort()
@@ -89,10 +79,10 @@ const normalizeIncomingMessage = (data, currentUserId) => {
     readAt,
   }
 }
-const createFriendRoom = (currentUserId, friend) => ({
+const createFriendRoom = (currentUserId, friend, t) => ({
   id: friend.friend_id,
   name: friend.display_name,
-  description: '朋友',
+  description: t('chat.friend'),
   initials: getInitials(friend.display_name),
   recipientId: friend.friend_id,
   conversationId: getConversationId(currentUserId, friend.friend_id),
@@ -106,7 +96,7 @@ const createFriendRoom = (currentUserId, friend) => ({
   lastMessageReadAt: '',
   unreadCount: 0,
 })
-const createUserRoom = (currentUserId, user, description = '使用者') => ({
+const createUserRoom = (currentUserId, user, description) => ({
   id: user.user_id,
   name: user.display_name,
   description,
@@ -125,9 +115,23 @@ const createUserRoom = (currentUserId, user, description = '使用者') => ({
 })
 
 export const useChatViewModel = (currentUser) => {
+  const { t } = useTranslation()
+  const defaultRooms = useMemo(
+    () => [
+      {
+        id: STOCK_BOT_ID,
+        name: t('chat.stockBotName'),
+        description: t('chat.stockBotDescription'),
+        initials: t('chat.stockBotInitial'),
+        recipientId: STOCK_BOT_ID,
+        isFriend: false,
+      },
+    ],
+    [t],
+  )
   const initialRooms = useMemo(
     () =>
-      DEFAULT_ROOMS.map((room) => ({
+      defaultRooms.map((room) => ({
         ...room,
         conversationId: getConversationId(currentUser.id, room.recipientId),
         lastMessage: '',
@@ -137,7 +141,7 @@ export const useChatViewModel = (currentUser) => {
         lastMessageReadAt: '',
         unreadCount: 0,
       })),
-    [currentUser.id],
+    [currentUser.id, defaultRooms],
   )
   const [rooms, setRooms] = useState(initialRooms)
   const [activeRoomId, setActiveRoomId] = useState(STOCK_BOT_ID)
@@ -223,11 +227,11 @@ export const useChatViewModel = (currentUser) => {
     setRooms((currentRooms) => {
       const existingRoom = currentRooms.find((item) => item.id === room.id)
       if (existingRoom) {
-        const isFriend = existingRoom.isFriend || room.isFriend || room.description === '朋友'
+        const isFriend = existingRoom.isFriend || room.isFriend || room.description === t('chat.friend')
         resolvedRoom = {
           ...existingRoom,
           ...room,
-          description: isFriend ? '朋友' : room.description || existingRoom.description,
+          description: isFriend ? t('chat.friend') : room.description || existingRoom.description,
           isFriend,
           lastMessage: room.lastMessage || existingRoom.lastMessage,
           lastMessageAt: room.lastMessageAt || existingRoom.lastMessageAt,
@@ -255,7 +259,7 @@ export const useChatViewModel = (currentUser) => {
       })
     })
     return resolvedRoom
-  }, [pruneMessages, touchConversationCache])
+  }, [pruneMessages, t, touchConversationCache])
 
   const updateRoomSummary = useCallback((conversationId, message, options = {}) => {
     updateRoom((currentRooms) =>
@@ -264,7 +268,7 @@ export const useChatViewModel = (currentUser) => {
 
         return {
           ...room,
-          lastMessage: message.text || (message.attachmentUrl ? ATTACHMENT_MESSAGE_FALLBACK : ''),
+          lastMessage: message.text || (message.attachmentUrl ? t('chat.sentAttachment') : ''),
           lastMessageAt: formatRoomTime(message.sentAt),
           lastMessageTimeMs: getTimeMs(message.sentAt),
           lastMessageIsSelf: message.isSelf,
@@ -276,7 +280,7 @@ export const useChatViewModel = (currentUser) => {
         }
       }),
     )
-  }, [updateRoom])
+  }, [t, updateRoom])
 
   const appendMessage = useCallback((data, options = {}) => {
     const message = normalizeIncomingMessage(data, currentUser.id)
@@ -299,7 +303,7 @@ export const useChatViewModel = (currentUser) => {
       appendRoom({
         id: otherUserId,
         name: knownName || otherUserName || otherUserId,
-        description: '聊天',
+        description: t('chat.conversation'),
         initials: getInitials(knownName || otherUserName || otherUserId),
         recipientId: otherUserId,
         conversationId,
@@ -330,7 +334,7 @@ export const useChatViewModel = (currentUser) => {
       })
     })
     updateRoomSummary(conversationId, message, options)
-  }, [appendRoom, currentUser.id, getActiveRoom, pruneMessages, touchConversationCache, updateRoomSummary])
+  }, [appendRoom, currentUser.id, getActiveRoom, pruneMessages, t, touchConversationCache, updateRoomSummary])
 
   const addSystemMessage = useCallback((text) => {
     const conversationId = getActiveRoom().conversationId
@@ -419,9 +423,9 @@ export const useChatViewModel = (currentUser) => {
     if (!request?.request_id || handledRequestIdsRef.current.has(request.request_id)) return
 
     rememberHandledRequest(request.request_id)
-    const accepted = window.confirm(`${request.from_display_name} 想加你為好友，是否同意？`)
+    const accepted = window.confirm(t('chat.confirmFriendRequest', { name: request.from_display_name }))
     await respondFriendRequest(request.request_id, accepted)
-  }, [rememberHandledRequest, respondFriendRequest])
+  }, [rememberHandledRequest, respondFriendRequest, t])
 
   const handleWebSocketEvent = useCallback(async (data) => {
     if (!data.type) {
@@ -437,15 +441,15 @@ export const useChatViewModel = (currentUser) => {
         await handleFriendRequest(data.payload)
         break
       case 'friend_added':
-        appendRoom(createFriendRoom(currentUser.id, data.payload))
+        appendRoom(createFriendRoom(currentUser.id, data.payload, t))
         break
       case 'read_receipt':
         applyReadReceipt(data.payload)
         break
       default:
-        console.warn('收到未知 WebSocket 事件:', data)
+        console.warn('Unknown WebSocket event:', data)
     }
-  }, [appendMessage, appendRoom, applyReadReceipt, currentUser.id, handleFriendRequest])
+  }, [appendMessage, appendRoom, applyReadReceipt, currentUser.id, handleFriendRequest, t])
 
   const disconnect = useCallback(() => {
     if (!socketRef.current) return
@@ -465,29 +469,29 @@ export const useChatViewModel = (currentUser) => {
       setIsConnected(true)
       setConnectionError('')
       sendActiveConversation()
-      console.log('已連線至 Go 後端')
+      console.log('Connected to Go backend')
     }
 
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         handleWebSocketEvent(data).catch((error) => {
-          console.error('處理 WebSocket 事件失敗:', error)
+          console.error('WebSocket event handling failed:', error)
         })
       } catch (error) {
-        console.error('收到無法解析的 WebSocket 訊息:', error)
-        addSystemMessage('收到的訊息格式不正確')
+        console.error('Received an invalid WebSocket message:', error)
+        addSystemMessage(t('chat.errors.invalidMessage'))
       }
     }
 
     socket.onerror = () => {
-      setConnectionError(`無法連線到 Go 後端，請確認 ${WS_URL} 已啟動`)
+      setConnectionError(t('chat.errors.connectionFailed', { url: WS_URL }))
     }
 
     socket.onclose = () => {
       setIsConnected(false)
     }
-  }, [addSystemMessage, currentUser.id, getActiveRoom, handleWebSocketEvent, sendActiveConversation])
+  }, [addSystemMessage, currentUser.id, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
 
   const reconnect = useCallback(() => {
     disconnect()
@@ -514,10 +518,10 @@ export const useChatViewModel = (currentUser) => {
       loadedConversationIdsRef.current.add(room.conversationId)
       touchConversationCache(room.conversationId)
     } catch (error) {
-      console.error('載入歷史訊息失敗:', error)
-      setRoomError('歷史訊息載入失敗')
+      console.error('Message history load failed:', error)
+      setRoomError(t('chat.errors.historyFailed'))
     }
-  }, [appendMessage, currentUser.id, touchConversationCache, updateRoom])
+  }, [appendMessage, currentUser.id, t, touchConversationCache, updateRoom])
 
   const loadUsers = useCallback(async () => {
     try {
@@ -530,10 +534,10 @@ export const useChatViewModel = (currentUser) => {
       availableUsersRef.current = users
       setAvailableUsers(users)
     } catch (error) {
-      console.error('載入使用者清單失敗:', error)
-      setRoomError('使用者清單載入失敗')
+      console.error('User list load failed:', error)
+      setRoomError(t('chat.errors.usersFailed'))
     }
-  }, [currentUser.id])
+  }, [currentUser.id, t])
 
   const loadFriends = useCallback(async () => {
     setRoomError('')
@@ -546,13 +550,13 @@ export const useChatViewModel = (currentUser) => {
 
       const friends = await response.json()
       friends.forEach((friend) => {
-        appendRoom(createFriendRoom(currentUser.id, friend))
+        appendRoom(createFriendRoom(currentUser.id, friend, t))
       })
     } catch (error) {
-      console.error('載入朋友清單失敗:', error)
-      setRoomError('朋友清單載入失敗')
+      console.error('Friend list load failed:', error)
+      setRoomError(t('chat.errors.friendsFailed'))
     }
-  }, [appendRoom, currentUser.id])
+  }, [appendRoom, currentUser.id, t])
 
   const loadConversations = useCallback(async () => {
     try {
@@ -566,7 +570,7 @@ export const useChatViewModel = (currentUser) => {
         appendRoom({
           id: conversation.recipient_id,
           name: conversation.display_name,
-          description: conversation.is_friend ? '朋友' : '聊天',
+          description: conversation.is_friend ? t('chat.friend') : t('chat.conversation'),
           initials: getInitials(conversation.display_name),
           recipientId: conversation.recipient_id,
           conversationId: conversation.conversation_id,
@@ -580,10 +584,10 @@ export const useChatViewModel = (currentUser) => {
         })
       })
     } catch (error) {
-      console.error('載入聊天列表失敗:', error)
-      setRoomError('聊天列表載入失敗')
+      console.error('Conversation list load failed:', error)
+      setRoomError(t('chat.errors.conversationsFailed'))
     }
-  }, [appendRoom, currentUser.id])
+  }, [appendRoom, currentUser.id, t])
 
   const loadFriendRequests = useCallback(async () => {
     try {
@@ -597,13 +601,13 @@ export const useChatViewModel = (currentUser) => {
         if (handledRequestIdsRef.current.has(request.request_id)) continue
         rememberHandledRequest(request.request_id)
 
-        const accepted = window.confirm(`${request.from_display_name} 想加你為好友，是否同意？`)
+        const accepted = window.confirm(t('chat.confirmFriendRequest', { name: request.from_display_name }))
         await respondFriendRequest(request.request_id, accepted)
       }
     } catch (error) {
-      console.error('載入好友邀請失敗:', error)
+      console.error('Friend request load failed:', error)
     }
-  }, [currentUser.id, rememberHandledRequest, respondFriendRequest])
+  }, [currentUser.id, rememberHandledRequest, respondFriendRequest, t])
 
   const selectRoom = useCallback((roomId) => {
     if (roomId === activeRoomIdRef.current) return
@@ -620,14 +624,14 @@ export const useChatViewModel = (currentUser) => {
     )
     touchConversationCache(nextRoom.conversationId)
     loadMessagesForRoom(nextRoom).catch((error) => {
-      console.error('切換聊天室載入歷史訊息失敗:', error)
+      console.error('Room switch history load failed:', error)
     })
 
     window.setTimeout(sendActiveConversation, 0)
   }, [loadMessagesForRoom, sendActiveConversation, touchConversationCache, updateRoom])
 
   const startChatWithUser = useCallback((user) => {
-    const room = createUserRoom(currentUser.id, user, '聊天')
+    const room = createUserRoom(currentUser.id, user, t('chat.conversation'))
     appendRoom(room)
     roomsRef.current = sortRooms([...roomsRef.current.filter((item) => item.id !== room.id), room])
     activeRoomIdRef.current = room.id
@@ -636,10 +640,10 @@ export const useChatViewModel = (currentUser) => {
     setFileAttachment(null)
     touchConversationCache(room.conversationId)
     loadMessagesForRoom(room).catch((error) => {
-      console.error('切換聊天室載入歷史訊息失敗:', error)
+      console.error('Room switch history load failed:', error)
     })
     window.setTimeout(sendActiveConversation, 0)
-  }, [appendRoom, currentUser.id, loadMessagesForRoom, sendActiveConversation, touchConversationCache])
+  }, [appendRoom, currentUser.id, loadMessagesForRoom, sendActiveConversation, t, touchConversationCache])
 
   const addFriend = useCallback(async (displayName) => {
     const name = displayName.trim()
@@ -661,12 +665,12 @@ export const useChatViewModel = (currentUser) => {
       if (!response.ok) throw new Error('create friend failed')
 
       await response.json()
-      setRoomError('好友邀請已送出，等待對方同意。')
+      setRoomError(t('chat.errors.friendInviteSent'))
     } catch (error) {
-      console.error('新增朋友失敗:', error)
-      setRoomError('新增朋友失敗，請確認朋友名稱是否存在。')
+      console.error('Add friend failed:', error)
+      setRoomError(t('chat.errors.addFriendFailed'))
     }
-  }, [currentUser.id])
+  }, [currentUser.id, t])
 
   const attachFile = (file) => {
     setFileAttachment(file)
@@ -707,7 +711,7 @@ export const useChatViewModel = (currentUser) => {
 
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      setConnectionError('目前尚未連線，正在重新連線。')
+      setConnectionError(t('chat.errors.reconnecting'))
       reconnect()
       return
     }
@@ -731,7 +735,7 @@ export const useChatViewModel = (currentUser) => {
     }
     setUserInput('')
     setFileAttachment(null)
-  }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, showStockBotPending, userInput])
+  }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, showStockBotPending, t, userInput])
 
   useEffect(() => {
     let isActive = true

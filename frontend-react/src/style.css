@@ -52,6 +52,37 @@ button {
   overflow: hidden;
 }
 
+.language-switcher {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 80;
+  padding: 4px;
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(18, 25, 38, 0.12);
+}
+
+.language-switcher button {
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-switcher .language-switcher-active {
+  color: #ffffff;
+  background: var(--accent);
+}
+
 .account-screen {
   min-height: 100svh;
   display: grid;

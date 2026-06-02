@@ -1,8 +1,12 @@
+import { useTranslation } from 'react-i18next'
+
 export default function ChatHeader({ isConnected, room, onBack }) {
+  const { t } = useTranslation()
+
   return (
     <header className="chat-header">
       <div className="chat-header-main">
-        <button type="button" className="chat-back-button" aria-label="返回聊天列表" onClick={onBack}>
+        <button type="button" className="chat-back-button" aria-label={t('chat.backToRooms')} onClick={onBack}>
           ‹
         </button>
         <div>
@@ -11,7 +15,7 @@ export default function ChatHeader({ isConnected, room, onBack }) {
         </div>
       </div>
       <span className={`status ${isConnected ? 'status-connected' : ''}`}>
-        {isConnected ? '已連線' : '未連線'}
+        {isConnected ? t('chat.connected') : t('chat.disconnected')}
       </span>
     </header>
   )
