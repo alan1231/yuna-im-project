@@ -1,6 +1,9 @@
 import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import './style.css'
 import App from './App.jsx'
 
-createRoot(document.getElementById('app')).render(createElement(App))
+createRoot(document.getElementById('app')).render(
+  createElement(BrowserRouter, null, createElement(App)),
+)

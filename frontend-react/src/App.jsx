@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import AccountSetup from './components/account/AccountSetup.jsx'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow.jsx'
@@ -22,11 +23,20 @@ const createLocalUserId = () => {
 }
 
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<ChatRoute />} />
+      <Route path="/admin" element={<AdminConsole />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
+function ChatRoute() {
   const [currentUser, setCurrentUser] = useState(loadStoredUser)
   const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [showBackendWakeHint, setShowBackendWakeHint] = useState(false)
   const [accountError, setAccountError] = useState('')
-  const isAdminRoute = window.location.pathname.startsWith('/admin')
 
   const persistUser = (user) => {
     setCurrentUser(user)
@@ -122,7 +132,6 @@ export default function App() {
     setAccountError('')
   }
 
-  if (isAdminRoute) return <AdminConsole />
   if (currentUser) return <ChatWindow currentUser={currentUser} onLogout={logout} />
 
   return (
