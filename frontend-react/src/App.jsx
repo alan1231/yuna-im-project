@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AccountSetup from './components/account/AccountSetup.jsx'
 import AdminConsole from './components/admin/AdminConsole.jsx'
@@ -33,6 +34,7 @@ export default function App() {
 }
 
 function ChatRoute() {
+  const { t } = useTranslation()
   const [currentUser, setCurrentUser] = useState(loadStoredUser)
   const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [showBackendWakeHint, setShowBackendWakeHint] = useState(false)
@@ -67,7 +69,7 @@ function ChatRoute() {
       })
 
       if (response.status === 409) {
-        setAccountError('這個顯示名稱已被使用，請換一個名稱。')
+        setAccountError(t('account.errors.duplicateName'))
         return
       }
 
@@ -82,7 +84,7 @@ function ChatRoute() {
       })
     } catch (error) {
       console.error('建立帳號失敗:', error)
-      setAccountError('建立帳號失敗，請確認 Go 後端已啟動。')
+      setAccountError(t('account.errors.createFailed'))
     } finally {
       window.clearTimeout(wakeHintTimer)
       setShowBackendWakeHint(false)
@@ -108,7 +110,7 @@ function ChatRoute() {
       const users = await response.json()
       const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
       if (!user) {
-        setAccountError('找不到這個帳號，請確認名稱是否正確。')
+        setAccountError(t('account.errors.loginNotFound'))
         return
       }
 
@@ -118,7 +120,7 @@ function ChatRoute() {
       })
     } catch (error) {
       console.error('登入失敗:', error)
-      setAccountError('登入失敗，請確認 Go 後端已啟動。')
+      setAccountError(t('account.errors.loginFailed'))
     } finally {
       window.clearTimeout(wakeHintTimer)
       setShowBackendWakeHint(false)
