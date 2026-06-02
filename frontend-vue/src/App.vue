@@ -3,9 +3,8 @@ import { ref } from 'vue'
 import AccountSetup from './components/account/AccountSetup.vue'
 import AdminConsole from './components/admin/AdminConsole.vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
+import { API_URL } from './config/api'
 
-const API_HOST = window.location.hostname || 'localhost'
-const API_URL = `http://${API_HOST}:8080`
 const USER_PROFILE_KEY = 'stock-analysis-user-profile'
 
 const loadStoredUser = () => {

@@ -1,7 +1,6 @@
 import { computed, onMounted, ref } from 'vue'
+import { API_URL } from '../config/api'
 
-const API_HOST = window.location.hostname || 'localhost'
-const API_URL = `http://${API_HOST}:8080`
 const ADMIN_TOKEN_KEY = 'yuna-im-admin-token'
 
 // Admin dates come from MongoDB/Go as ISO timestamps. Invalid or missing values

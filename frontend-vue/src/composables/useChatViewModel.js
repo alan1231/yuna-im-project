@@ -1,11 +1,10 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { API_URL, WS_URL } from '../config/api'
 import { resolveChangePercent } from '../utils/stockChange'
 
-const API_HOST = window.location.hostname || 'localhost'
-const API_URL = `http://${API_HOST}:8080`
-const WS_URL = `ws://${API_HOST}:8080/ws`
 const STOCK_BOT_ID = 'stock_bot'
 const STOCK_BOT_NAME = 'Stock_Bot'
+const STOCK_BOT_PENDING_ID = 'stock-bot-pending'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 const MAX_HANDLED_REQUEST_IDS = 100
@@ -149,6 +148,35 @@ export const useChatViewModel = (currentUser) => {
     trimConversationMessages(conversationId)
   }
 
+  const removePendingMessage = (conversationId, pendingId) => {
+    const conversationMessages = messagesByConversation.value[conversationId]
+    if (!conversationMessages) return
+
+    messagesByConversation.value[conversationId] = conversationMessages.filter(
+      (message) => message.pendingId !== pendingId,
+    )
+  }
+
+  const showStockBotPending = (conversationId) => {
+    removePendingMessage(conversationId, STOCK_BOT_PENDING_ID)
+
+    if (!messagesByConversation.value[conversationId]) {
+      messagesByConversation.value[conversationId] = []
+    }
+
+    messagesByConversation.value[conversationId].push({
+      sender: STOCK_BOT_NAME,
+      senderId: STOCK_BOT_ID,
+      recipientId: currentUser.id,
+      conversationId,
+      text: '',
+      sentAt: getCurrentTime(),
+      isPending: true,
+      pendingId: STOCK_BOT_PENDING_ID,
+    })
+    touchConversationCache(conversationId)
+  }
+
   // Every message can arrive from history, live WebSocket events, or the Python
   // stock bot. This path normalizes and de-duplicates before touching UI state.
   const appendMessage = (data, options = {}) => {
@@ -157,6 +185,10 @@ export const useChatViewModel = (currentUser) => {
     const otherUserId = message.isSelf ? message.recipientId : message.senderId
     const otherUserName = message.isSelf ? '' : message.sender
     const messageKey = getMessageKey(message)
+
+    if (message.senderId === STOCK_BOT_ID) {
+      removePendingMessage(conversationId, STOCK_BOT_PENDING_ID)
+    }
 
     if (!messagesByConversation.value[conversationId]) {
       messagesByConversation.value[conversationId] = []
@@ -662,6 +694,9 @@ export const useChatViewModel = (currentUser) => {
         attachment_size: attachment?.size || 0,
       }),
     )
+    if (activeRoom.value.recipientId === STOCK_BOT_ID && text) {
+      showStockBotPending(activeRoom.value.conversationId)
+    }
     userInput.value = ''
     fileAttachment.value = null
   }
