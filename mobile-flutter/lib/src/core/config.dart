@@ -4,6 +4,6 @@ const apiBaseUrl = 'http://$apiHost:$apiPort';
 const wsBaseUrl = 'ws://$apiHost:$apiPort/ws';
 
 const stockBotId = 'stock_bot';
-const stockBotName = '股票機器人';
+const stockBotName = 'stock robot';
 const profileStorageKey = 'yuna-im-mobile-profile';
 const maxCachedMessagesPerConversation = 200;
