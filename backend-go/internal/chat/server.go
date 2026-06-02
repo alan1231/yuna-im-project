@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -1028,10 +1029,15 @@ func Run(cfg Config) error {
 	if err := ensureIndexes(ctx, client); err != nil {
 		return err
 	}
-	redisClient := redis.NewClient(&redis.Options{
+	redisOptions := &redis.Options{
 		Addr:     cfg.RedisAddr,
+		Username: cfg.RedisUsername,
 		Password: cfg.RedisPassword,
-	})
+	}
+	if cfg.RedisTLS {
+		redisOptions.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
 	if err := redisClient.Ping(ctx).Err(); err != nil {

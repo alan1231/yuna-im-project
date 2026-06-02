@@ -16,7 +16,9 @@ const (
 type Config struct {
 	MongoURI       string
 	RedisAddr      string
+	RedisUsername  string
 	RedisPassword  string
+	RedisTLS       bool
 	DatabaseName   string
 	ServerAddr     string
 	AllowedOrigins string
@@ -29,7 +31,9 @@ func LoadConfig() Config {
 	return Config{
 		MongoURI:       envOrDefault("MONGO_URI", defaultMongoURI),
 		RedisAddr:      envOrDefault("REDIS_ADDR", defaultRedisAddr),
+		RedisUsername:  strings.TrimSpace(os.Getenv("REDIS_USERNAME")),
 		RedisPassword:  strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
+		RedisTLS:       parseBool(os.Getenv("REDIS_TLS")),
 		DatabaseName:   envOrDefault("DATABASE_NAME", defaultDatabaseName),
 		ServerAddr:     envOrDefault("SERVER_ADDR", defaultServerAddr),
 		AllowedOrigins: envOrDefault("ALLOWED_ORIGINS", defaultAllowedOrigins),
@@ -44,4 +48,13 @@ func envOrDefault(key string, fallback string) string {
 	}
 
 	return value
+}
+
+func parseBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

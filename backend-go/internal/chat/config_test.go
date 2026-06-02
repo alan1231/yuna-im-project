@@ -5,7 +5,9 @@ import "testing"
 func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("MONGO_URI", "")
 	t.Setenv("REDIS_ADDR", "")
+	t.Setenv("REDIS_USERNAME", "")
 	t.Setenv("REDIS_PASSWORD", "")
+	t.Setenv("REDIS_TLS", "")
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("DATABASE_NAME", "")
 	t.Setenv("SERVER_ADDR", "")
@@ -21,6 +23,12 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	}
 	if cfg.RedisPassword != "" {
 		t.Fatalf("RedisPassword = %q, want empty", cfg.RedisPassword)
+	}
+	if cfg.RedisUsername != "" {
+		t.Fatalf("RedisUsername = %q, want empty", cfg.RedisUsername)
+	}
+	if cfg.RedisTLS {
+		t.Fatal("RedisTLS = true, want false")
 	}
 	if cfg.AdminToken != "" {
 		t.Fatalf("AdminToken = %q, want empty", cfg.AdminToken)
@@ -39,7 +47,9 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 func TestLoadConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("MONGO_URI", "mongodb://mongo:27017")
 	t.Setenv("REDIS_ADDR", "redis:6379")
+	t.Setenv("REDIS_USERNAME", "default")
 	t.Setenv("REDIS_PASSWORD", "secret")
+	t.Setenv("REDIS_TLS", "true")
 	t.Setenv("ADMIN_TOKEN", "admin-secret")
 	t.Setenv("DATABASE_NAME", "chat_test")
 	t.Setenv("SERVER_ADDR", ":9090")
@@ -55,6 +65,12 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	}
 	if cfg.RedisPassword != "secret" {
 		t.Fatalf("RedisPassword = %q", cfg.RedisPassword)
+	}
+	if cfg.RedisUsername != "default" {
+		t.Fatalf("RedisUsername = %q", cfg.RedisUsername)
+	}
+	if !cfg.RedisTLS {
+		t.Fatal("RedisTLS = false, want true")
 	}
 	if cfg.AdminToken != "admin-secret" {
 		t.Fatalf("AdminToken = %q", cfg.AdminToken)
