@@ -134,6 +134,16 @@ button {
   border-radius: 8px;
 }
 
+.account-wake-hint {
+  margin: 0;
+  padding: 10px 12px;
+  color: #41546d;
+  background: #edf6ff;
+  border: 1px solid #cfe6ff;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
 .account-panel button {
   min-height: 46px;
   color: #ffffff;

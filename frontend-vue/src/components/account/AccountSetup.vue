@@ -6,6 +6,10 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  showWakeHint: {
+    type: Boolean,
+    default: false,
+  },
   error: {
     type: String,
     default: '',
@@ -61,6 +65,9 @@ const submit = () => {
       </label>
 
       <p v-if="props.error" class="account-error">{{ props.error }}</p>
+      <p v-else-if="props.showWakeHint" class="account-wake-hint">
+        免費雲端服務正在喚醒，第一次連線可能需要稍等。
+      </p>
 
       <button type="submit" :disabled="props.isSubmitting || !displayName.trim()">
         {{ props.isSubmitting ? '處理中' : mode === 'login' ? '登入' : '建立帳號' }}

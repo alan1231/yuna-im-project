@@ -24,6 +24,7 @@ const createLocalUserId = () => {
 
 const currentUser = ref(loadStoredUser())
 const isCreatingUser = ref(false)
+const showBackendWakeHint = ref(false)
 const accountError = ref('')
 // The admin console is bundled in the same Vue app, but kept on a separate
 // route so chat and management UI can evolve independently.
@@ -34,7 +35,11 @@ const createUser = async (displayName) => {
   if (!name) return
 
   isCreatingUser.value = true
+  showBackendWakeHint.value = false
   accountError.value = ''
+  const wakeHintTimer = window.setTimeout(() => {
+    showBackendWakeHint.value = true
+  }, 1200)
 
   try {
     const payload = {
@@ -69,6 +74,8 @@ const createUser = async (displayName) => {
     console.error('建立帳號失敗:', error)
     accountError.value = '建立帳號失敗，請確認 Go 後端已啟動。'
   } finally {
+    window.clearTimeout(wakeHintTimer)
+    showBackendWakeHint.value = false
     isCreatingUser.value = false
   }
 }
@@ -78,7 +85,11 @@ const loginUser = async (displayName) => {
   if (!name) return
 
   isCreatingUser.value = true
+  showBackendWakeHint.value = false
   accountError.value = ''
+  const wakeHintTimer = window.setTimeout(() => {
+    showBackendWakeHint.value = true
+  }, 1200)
 
   try {
     const response = await fetch(`${API_URL}/users`)
@@ -100,6 +111,8 @@ const loginUser = async (displayName) => {
     console.error('登入失敗:', error)
     accountError.value = '登入失敗，請確認 Go 後端已啟動。'
   } finally {
+    window.clearTimeout(wakeHintTimer)
+    showBackendWakeHint.value = false
     isCreatingUser.value = false
   }
 }
@@ -121,6 +134,7 @@ const logout = () => {
   <AccountSetup
     v-else
     :is-submitting="isCreatingUser"
+    :show-wake-hint="showBackendWakeHint"
     :error="accountError"
     @create="createUser"
     @login="loginUser"
