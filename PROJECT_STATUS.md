@@ -9,11 +9,19 @@ Recommended flow:
 
 ```bash
 git checkout dev
+git merge main
 # edit and test locally
 git add .
 git commit -m "Describe the change"
 git push origin dev
 ```
+
+Rules:
+
+- Start new code changes from `dev`, not `main`.
+- Before editing, sync `dev` from the latest `main`.
+- Keep untested work on `dev`.
+- Push `main` only when the change is ready to deploy.
 
 When the change is ready for cloud deployment:
 

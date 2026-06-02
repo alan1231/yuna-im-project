@@ -58,7 +58,20 @@ docker compose up -d
 - `main`：雲端部署分支，Render 和 Vercel 從這個分支部署。
 - `dev`：本地開發與測試分支。
 
-平常在 `dev` 修改；本機測試通過後合併到 `main`，再 push `main` 觸發雲端部署。
+之後的修改都先從 `dev` 開始。開始前先把 `main` 同步到 `dev`，本機測試通過後才合併到 `main`，再 push `main` 觸發雲端部署：
+
+```bash
+git checkout dev
+git merge main
+# 修改並測試
+git add .
+git commit -m "Describe the change"
+git push origin dev
+
+git checkout main
+git merge dev
+git push origin main
+```
 
 ## Flutter Mobile
 
