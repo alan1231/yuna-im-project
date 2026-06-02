@@ -671,7 +671,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	defer presence.Disconnect(context.Background(), userID)
 	go presence.KeepAlive(ctx, userID)
 
-	fmt.Printf("Vue 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
+	fmt.Printf("React 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
 
 	wsClient := newWSClient(userID, conversationID)
 	hub.register(wsClient)

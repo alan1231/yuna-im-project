@@ -2,13 +2,13 @@
 
 ## Goal
 
-Yuna IM is a real-time chat project that combines a Vue chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a Python stock bot.
+Yuna IM is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a Python stock bot.
 
 The current priority is a stable local/demo-grade IM experience with clear paths toward production hardening.
 
 ## Architecture
 
-- `frontend-vue`: Vue 3 app for account setup, chat, friend management, and the admin console.
+- `frontend-react`: React app for account setup, chat, friend management, and the admin console.
 - `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, and admin endpoints.
 - `backend-python`: Stock bot that watches MongoDB `messages` and writes bot replies back into the same collection.
 - MongoDB: Durable storage for users, messages, friends, and friend requests.
@@ -18,17 +18,17 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 
 - MongoDB must run as a replica set because Go and Python both depend on Change Streams.
 - Go backend defaults to `:8080`.
-- Vue uses Vite for local development.
+- React uses Vite for local development.
 - Python bot communicates indirectly through MongoDB, not through HTTP or WebSocket.
 - Local development starts all app processes with `./scripts/dev.sh`; MongoDB and Redis still need to be running.
 
 ## Important Data Flows
 
-- User sends message in Vue through WebSocket.
+- User sends message in React through WebSocket.
 - Go trusts the WebSocket `user_id` query parameter as sender identity for now, recomputes `conversation_id`, and writes the message to MongoDB.
 - Go shared Change Stream hub watches MongoDB once per backend process and fans events out to matching WebSocket clients.
 - Python stock bot watches messages sent to `stock_bot`, queries stock data, and inserts a bot reply into MongoDB.
-- Vue keeps bounded in-memory message caches and reloads persisted history from `/messages` when needed.
+- React keeps bounded in-memory message caches and reloads persisted history from `/messages` when needed.
 
 ## Current Priorities
 
@@ -44,4 +44,3 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 - Conversation list is still computed from recent messages instead of a dedicated summary collection.
 - Frontend has no lint/unit test setup yet.
 - Python bot config is still less centralized than Go config.
-

@@ -1,6 +1,6 @@
 # Yuna IM Project
 
-Yuna IM 是一個本機/demo 即時聊天專案，使用 Vue、Go、MongoDB、Redis 和 Python 股票機器人組成。
+Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 和 Python 股票機器人組成。
 
 ## 快速啟動
 
@@ -10,7 +10,7 @@ Yuna IM 是一個本機/demo 即時聊天專案，使用 Vue、Go、MongoDB、Re
 docker compose up -d
 ```
 
-再啟動 Go、Vue 和 Python 股票機器人：
+再啟動 Go、React 和 Python 股票機器人：
 
 ```bash
 ./scripts/dev.sh
@@ -25,7 +25,7 @@ docker compose up -d
 
 ## 架構總覽
 
-- `frontend-vue`：Vue 3 前端，包含帳號建立、聊天、好友、管理台。
+- `frontend-react`：React 前端，包含帳號建立、聊天、好友、管理台。
 - `mobile-flutter`：Flutter mobile app，使用者端聊天，不包含後台管理。
 - `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態。
 - `backend-python`：股票機器人，監聽 MongoDB 訊息並寫入回覆。
@@ -50,7 +50,7 @@ docker compose up -d
 - [Project context](PROJECT_CONTEXT.md)
 - [Mobile API contract](docs/API_CONTRACT.md)
 - [Go chat backend context](backend-go/internal/chat/README.md)
-- [Vue composables context](frontend-vue/src/composables/README.md)
+- [React frontend](frontend-react/README.md)
 - [Architecture decisions](docs/decisions)
 
 ## 分支與部署

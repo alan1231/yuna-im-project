@@ -392,9 +392,8 @@ Same shape as `friendResponse`.
 
 - Use one WebSocket connection per logged-in mobile user.
 - Do not reconnect WebSocket on every room switch; send `active_conversation` instead.
-- Keep a local message cache with a bounded size, similar to Vue.
+- Keep a local message cache with a bounded size, similar to React.
 - Compress large images before sending because attachments are currently data URLs.
 - Treat all date/time strings as ISO 8601.
 - Be tolerant of unknown fields in message payloads.
 - Do not implement admin routes in mobile.
-
