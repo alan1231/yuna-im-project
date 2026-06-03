@@ -85,6 +85,12 @@ type twseStockDayResponse struct {
 	Data   [][]string `json:"data"`
 }
 
+type twseStockDayAllRow struct {
+	Code         string `json:"Code"`
+	ClosingPrice string `json:"ClosingPrice"`
+	Change       string `json:"Change"`
+}
+
 type stockDividend struct {
 	Amount float64
 	Date   time.Time
@@ -366,6 +372,13 @@ func fetchFallbackStockData(ctx context.Context, symbol string) (stockData, erro
 		if stock.Status != "" && stock.Status != "not_found" {
 			log.Printf("TWSE 即時查詢未取得資料: symbol=%s status=%s", symbol, stock.Status)
 		}
+		stock, err = fetchTWSEStockDayAllData(ctx, symbol)
+		if err == nil && stock.Status == "ok" {
+			return stock, nil
+		}
+		if err != nil {
+			log.Printf("TWSE 全市場日資料查詢失敗: symbol=%s err=%v", symbol, err)
+		}
 		return fetchTWSEStockDayData(ctx, symbol)
 	}
 	return fetchStooqStockData(ctx, symbol)
@@ -435,6 +448,63 @@ func fetchTWSEStockInfoForMarket(ctx context.Context, symbol string, ticker stri
 		Price:     round(price, 2),
 		ChangePct: round(changePct, 2),
 	}, nil
+}
+
+func fetchTWSEStockDayAllData(ctx context.Context, symbol string) (stockData, error) {
+	ticker := strings.TrimSuffix(symbol, ".TW")
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		"https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+		nil,
+	)
+	if err != nil {
+		return stockData{}, err
+	}
+	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
+
+	resp, err := stockHTTPClient.Do(req)
+	if err != nil {
+		return stockData{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("TWSE 全市場日資料 HTTP 狀態異常: symbol=%s status=%d", symbol, resp.StatusCode)
+		return stockData{Status: "error", Symbol: symbol}, nil
+	}
+
+	rows := []twseStockDayAllRow{}
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		return stockData{}, err
+	}
+
+	for _, row := range rows {
+		if row.Code != ticker {
+			continue
+		}
+
+		closePrice := parseMarketNumber(row.ClosingPrice)
+		change := parseMarketNumber(strings.TrimPrefix(row.Change, "+"))
+		if closePrice == 0 {
+			return stockData{Status: "not_found", Symbol: symbol}, nil
+		}
+
+		previousClose := closePrice - change
+		changePct := 0.0
+		if previousClose != 0 {
+			changePct = (change / previousClose) * 100
+		}
+
+		return stockData{
+			Status:    "ok",
+			Symbol:    symbol,
+			Price:     round(closePrice, 2),
+			ChangePct: round(changePct, 2),
+		}, nil
+	}
+
+	return stockData{Status: "not_found", Symbol: symbol}, nil
 }
 
 func fetchTWSEStockDayData(ctx context.Context, symbol string) (stockData, error) {
