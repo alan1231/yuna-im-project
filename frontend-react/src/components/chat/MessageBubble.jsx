@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getChangeClass } from '../../utils/stockChange'
-import { parseStockReply } from '../../utils/stockReply'
+import { localizeStockText, parseStockReply } from '../../utils/stockReply'
 
 const formatNumber = (value, language, options = {}) => {
   if (!Number.isFinite(value)) return '-'
@@ -89,6 +89,7 @@ export default function MessageBubble({ message }) {
   const attachmentLabel = message.attachmentName || t('chat.file')
   const changeClass = getChangeClass(message)
   const stockReply = !isSelf && !isPending ? parseStockReply(message.text) : null
+  const displayText = localizeStockText(message.text, t)
   const sentTime = (() => {
     const date = new Date(message.sentAt)
     if (Number.isNaN(date.getTime())) return message.sentAt || ''
@@ -160,7 +161,7 @@ export default function MessageBubble({ message }) {
         {!isPending && stockReply ? (
           <StockReplyCard stock={stockReply} language={i18n.language} t={t} />
         ) : null}
-        {!isPending && hasText && !stockReply ? <p className={changeClass}>{message.text}</p> : null}
+        {!isPending && hasText && !stockReply ? <p className={changeClass}>{displayText}</p> : null}
         {!isPending ? (
           <footer className="message-footer">
             {sentTime ? <time>{sentTime}</time> : null}
