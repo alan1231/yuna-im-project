@@ -25,6 +25,13 @@ const formatPresence = (room, t, language) => {
   })
 }
 
+const formatRoomPreview = (room, t) => {
+  const preview = room.lastMessage || room.description
+  if (room.id === 'stock_bot') return formatStockPreview(preview, t)
+  if (preview === '已傳送檔案' || preview === 'Sent a file') return t('chat.sentAttachment')
+  return preview
+}
+
 export default function RoomList({
   rooms,
   availableUsers,
@@ -279,10 +286,7 @@ export default function RoomList({
 
       <nav className="room-list" aria-label={t('chat.roomTargetsLabel')}>
         {visibleRooms.map((room) => {
-          const previewText =
-            room.id === 'stock_bot'
-              ? formatStockPreview(room.lastMessage || room.description, t)
-              : room.lastMessage || room.description
+          const previewText = formatRoomPreview(room, t)
 
           return (
             <button
