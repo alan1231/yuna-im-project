@@ -3,6 +3,17 @@ const changePattern = /^漲跌幅:\s*([+-]?\d+(?:\.\d+)?)%$/
 const latestDividendPattern = /^最近一次股利:\s*([+-]?\d+(?:\.\d+)?)\s+\(([^)]+)\)$/
 const dividendTotalPattern = /^近 12 個月股利合計:\s*([+-]?\d+(?:\.\d+)?)$/
 const dividendRecordPattern = /^-\s*([^:]+):\s*([+-]?\d+(?:\.\d+)?)$/
+const queryErrorPattern = /^查詢\s+(.+?)\s+股價時發生錯誤，請稍後再試。$/
+const notFoundPattern = /^找不到\s+(.+?)\s+的股價資料，請確認股票代號是否正確。$/
+const invalidSymbolPattern = /^股票代號格式不正確/
+
+const formatPricePreview = (value) => {
+  if (!Number.isFinite(value)) return '-'
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
 
 export const parseStockReply = (text) => {
   const lines = String(text ?? '')
@@ -41,4 +52,37 @@ export const parseStockReply = (text) => {
     dividendRecords,
     noDividendData,
   }
+}
+
+export const localizeStockText = (text, t) => {
+  const value = String(text ?? '').trim()
+  if (!value) return ''
+
+  const queryErrorMatch = value.match(queryErrorPattern)
+  if (queryErrorMatch) {
+    return t('stockMessage.queryError', { symbol: queryErrorMatch[1] })
+  }
+
+  const notFoundMatch = value.match(notFoundPattern)
+  if (notFoundMatch) {
+    return t('stockMessage.notFound', { symbol: notFoundMatch[1] })
+  }
+
+  if (invalidSymbolPattern.test(value)) {
+    return t('stockMessage.invalidSymbol')
+  }
+
+  return text
+}
+
+export const formatStockPreview = (text, t) => {
+  const stockReply = parseStockReply(text)
+  if (stockReply) {
+    return t('stockMessage.preview', {
+      symbol: stockReply.symbol,
+      price: formatPricePreview(stockReply.price),
+    })
+  }
+
+  return localizeStockText(text, t)
 }

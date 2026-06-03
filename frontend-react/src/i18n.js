@@ -161,6 +161,12 @@ const resources = {
         trailingTotal: '近 12 個月合計',
         noDividends: '暫無股利資料',
       },
+      stockMessage: {
+        preview: '{{symbol}} 股價 {{price}}',
+        queryError: '查詢 {{symbol}} 股價時發生錯誤，請稍後再試。',
+        notFound: '找不到 {{symbol}} 的股價資料，請確認股票代號是否正確。',
+        invalidSymbol: '股票代號格式不正確，請輸入 4 位數台股代號或美股代號，例如：2337、$2337、AVGO、$TSM。',
+      },
     },
   },
   en: {
@@ -321,6 +327,12 @@ const resources = {
         latestDividend: 'Latest dividend',
         trailingTotal: 'Trailing 12-month total',
         noDividends: 'No dividend data',
+      },
+      stockMessage: {
+        preview: '{{symbol}} price {{price}}',
+        queryError: 'Market data for {{symbol}} is temporarily unavailable. Try again later.',
+        notFound: 'No market data found for {{symbol}}. Check the ticker symbol.',
+        invalidSymbol: 'Invalid ticker format. Use a 4-digit Taiwan ticker or a US ticker, such as 2337, $2337, AVGO, or $TSM.',
       },
     },
   },

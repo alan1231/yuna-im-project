@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatStockPreview } from '../../utils/stockReply'
 
 const formatPresence = (room, t, language) => {
   if (room.online) return t('chat.presence.online')
@@ -361,38 +362,45 @@ export default function RoomList({
       </div>
 
       <nav className="room-list" aria-label={t('chat.roomTargetsLabel')}>
-        {visibleRooms.map((room) => (
-          <button
-            key={room.id}
-            type="button"
-            className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''}`}
-            onClick={() => onSelect(room.id)}
-          >
-            <span className="room-avatar">{room.initials}</span>
-            <span className="room-content">
-              <span className="room-topline">
-                <span className="room-name">{room.name}</span>
-                {room.lastMessageAt ? <time className="room-time">{room.lastMessageAt}</time> : null}
+        {visibleRooms.map((room) => {
+          const previewText =
+            room.id === 'stock_bot'
+              ? formatStockPreview(room.lastMessage || room.description, t)
+              : room.lastMessage || room.description
+
+          return (
+            <button
+              key={room.id}
+              type="button"
+              className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''}`}
+              onClick={() => onSelect(room.id)}
+            >
+              <span className="room-avatar">{room.initials}</span>
+              <span className="room-content">
+                <span className="room-topline">
+                  <span className="room-name">{room.name}</span>
+                  {room.lastMessageAt ? <time className="room-time">{room.lastMessageAt}</time> : null}
+                </span>
+                <span className="room-bottomline">
+                  <span className="room-preview">{previewText}</span>
+                  {room.lastMessageIsSelf ? (
+                    <span
+                      className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
+                      aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                      title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                    >
+                      <span />
+                      {room.lastMessageReadAt ? <span /> : null}
+                    </span>
+                  ) : null}
+                  {!room.lastMessageIsSelf && room.unreadCount ? (
+                    <span className="unread-badge">{room.unreadCount > 99 ? '99+' : room.unreadCount}</span>
+                  ) : null}
+                </span>
               </span>
-              <span className="room-bottomline">
-                <span className="room-preview">{room.lastMessage || room.description}</span>
-                {room.lastMessageIsSelf ? (
-                  <span
-                    className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                    aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                    title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                  >
-                    <span />
-                    {room.lastMessageReadAt ? <span /> : null}
-                  </span>
-                ) : null}
-                {!room.lastMessageIsSelf && room.unreadCount ? (
-                  <span className="unread-badge">{room.unreadCount > 99 ? '99+' : room.unreadCount}</span>
-                ) : null}
-              </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          )
+        })}
         {visibleUsers.map((user) => (
           <button
             key={user.user_id}
