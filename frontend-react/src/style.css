@@ -1365,9 +1365,10 @@ h1 {
 }
 
 .message-stock-card {
+  width: min(440px, 78%);
   max-width: min(82%, 520px);
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   background: #ffffff;
   border-color: #cad7e3;
   border-radius: 8px;
@@ -1382,13 +1383,16 @@ h1 {
   float: none;
   justify-content: flex-end;
   background: #ffffff;
+  border-radius: 0 0 8px 8px;
 }
 
 .stock-card {
-  width: min(420px, 72vw);
+  width: 100%;
   display: grid;
+  overflow: hidden;
   color: var(--text);
   background: #ffffff;
+  border-radius: 8px 8px 0 0;
 }
 
 .stock-card-header {
@@ -2103,6 +2107,11 @@ h1 {
   }
 
   .message {
+    max-width: 88%;
+  }
+
+  .message-stock-card {
+    width: 88%;
     max-width: 88%;
   }
 
