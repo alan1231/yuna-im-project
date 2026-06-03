@@ -10,7 +10,6 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 
 - `frontend-react`: React app for account setup, chat, friend management, and the admin console.
 - `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, admin endpoints, and the stock bot.
-- `backend-python`: Legacy Python stock bot kept for reference; production stock bot behavior now lives in Go.
 - MongoDB: Durable storage for users, messages, friends, and friend requests.
 - Redis: Short-lived online presence and WebSocket connection counts.
 
@@ -42,4 +41,3 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 - Admin auth is token-based and intentionally lightweight.
 - Conversation list is still computed from recent messages instead of a dedicated summary collection.
 - Frontend has no lint/unit test setup yet.
-- Python bot config is still less centralized than Go config.

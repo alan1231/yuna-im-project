@@ -28,7 +28,6 @@ docker compose up -d
 - `frontend-react`：React 前端，包含帳號建立、聊天、好友、管理台。
 - `mobile-flutter`：Flutter mobile app，使用者端聊天，不包含後台管理。
 - `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態、行情小幫手。
-- `backend-python`：舊版 Python 行情小幫手，已由 Go 內建 stock bot 取代。
 - MongoDB：儲存 users、messages、friends、friend_requests。
 - Redis：儲存短生命週期的在線狀態和連線數。
 
