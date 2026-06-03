@@ -926,7 +926,7 @@ func loadFriendNames(ctx context.Context, client *mongo.Client, userID string) m
 
 func lookupDisplayName(ctx context.Context, client *mongo.Client, userID string) string {
 	if userID == "stock_bot" {
-		return "股票機器人"
+		return "行情小幫手"
 	}
 
 	var user userResponse

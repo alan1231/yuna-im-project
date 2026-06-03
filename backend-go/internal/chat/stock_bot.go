@@ -17,7 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const stockBotName = "Stock_Bot"
+const stockBotName = "行情小幫手"
 
 type yahooChartResponse struct {
 	Chart struct {
@@ -80,7 +80,7 @@ func processStockBotMessage(ctx context.Context, client *mongo.Client, message b
 	}
 
 	if _, err := client.Database(databaseName).Collection(collectionName).InsertOne(ctx, reply); err != nil {
-		log.Printf("股票機器人回覆寫入 MongoDB 失敗: %v", err)
+		log.Printf("行情小幫手回覆寫入 MongoDB 失敗: %v", err)
 	}
 }
 

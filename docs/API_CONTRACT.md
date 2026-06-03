@@ -338,7 +338,7 @@ Notes:
 - Go 後端會以 WebSocket query 的 `user_id` 當真正 sender。
 - Go 後端會用 `recipient_id` 重新計算 `conversation_id`。
 - Flutter 端仍可送 `conversation_id`，但不要依賴它作為權限依據。
-- 股票機器人聊天室請只送文字，不要送附件。
+- 行情小幫手聊天室請只送文字，不要送附件。
 
 ### Receive Event
 
