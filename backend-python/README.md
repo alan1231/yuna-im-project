@@ -27,7 +27,9 @@ service.
 On startup or reconnect, the agent also scans recent unanswered stock-bot
 messages. This handles Render Free sleep: if the bot was asleep when a message
 was inserted, waking `/healthz` starts the process and the scan replies to the
-missed query.
+missed query. Bot replies store `reply_to_message_id` so the recovery scan can
+avoid duplicate replies without skipping later unanswered messages in the same
+conversation.
 
 ## Render deployment
 

@@ -164,6 +164,18 @@ def build_stock_reply(user_text):
 
 def has_bot_reply(messages_col, message):
     sent_at = message.get("time")
+    message_id = str(message.get("_id", ""))
+    if message_id:
+        exact_reply_query = {
+            "sender_id": STOCK_BOT_ID,
+            "recipient_id": message.get("sender_id"),
+            "conversation_id": message.get("conversation_id"),
+            "is_ai": True,
+            "reply_to_message_id": message_id,
+        }
+        if messages_col.count_documents(exact_reply_query, limit=1) > 0:
+            return True
+
     query = {
         "sender_id": STOCK_BOT_ID,
         "recipient_id": message.get("sender_id"),
@@ -172,6 +184,10 @@ def has_bot_reply(messages_col, message):
     }
     if sent_at:
         query["time"] = {"$gte": sent_at}
+
+    symbol, validation_error = parse_stock_command(str(message.get("text", "")).upper())
+    if symbol and not validation_error:
+        query["text"] = {"$regex": "^" + re.escape(symbol)}
 
     return messages_col.count_documents(query, limit=1) > 0
 
@@ -184,7 +200,8 @@ def insert_bot_reply(messages_col, message, reply_text):
         "conversation_id": message["conversation_id"],
         "text": reply_text,
         "time": datetime.now(timezone.utc),
-        "is_ai": True
+        "is_ai": True,
+        "reply_to_message_id": str(message.get("_id", "")),
     })
     print("📤 已回覆股價資訊", flush=True)
 
