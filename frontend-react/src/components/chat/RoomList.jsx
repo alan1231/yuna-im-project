@@ -41,6 +41,7 @@ export default function RoomList({
   onSelect,
   onStartChat,
   onAddFriend,
+  onDeleteFriend,
   onCreateGroup,
   onRefreshFriends,
   onLogout,
@@ -205,40 +206,46 @@ export default function RoomList({
 
             <nav className="drawer-contact-list" aria-label={t('chat.contactsLabel')}>
               {visibleFriendRooms.map((friend) => (
-                <button
-                  key={friend.id}
-                  type="button"
-                  className="drawer-contact-item"
-                  onClick={() => selectContact(friend.id)}
-                >
-                  <span className="room-avatar">{friend.initials}</span>
-                  <span className="drawer-contact-content">
-                    <span className="drawer-contact-topline">
-                      <strong>{friend.name}</strong>
-                      {friend.lastMessageAt ? <time>{friend.lastMessageAt}</time> : null}
-                    </span>
-                    <span className="drawer-contact-bottomline">
-                      <span className={`presence-text ${friend.online ? 'presence-online' : ''}`}>
-                        {formatPresence(friend, t, i18n.language)}
+                <div key={friend.id} className="drawer-contact-row">
+                  <button type="button" className="drawer-contact-item" onClick={() => selectContact(friend.id)}>
+                    <span className="room-avatar">{friend.initials}</span>
+                    <span className="drawer-contact-content">
+                      <span className="drawer-contact-topline">
+                        <strong>{friend.name}</strong>
+                        {friend.lastMessageAt ? <time>{friend.lastMessageAt}</time> : null}
                       </span>
-                      {friend.lastMessageIsSelf ? (
-                        <span
-                          className={`read-checks ${friend.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                          aria-label={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                          title={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                        >
-                          <span />
-                          {friend.lastMessageReadAt ? <span /> : null}
+                      <span className="drawer-contact-bottomline">
+                        <span className={`presence-text ${friend.online ? 'presence-online' : ''}`}>
+                          {formatPresence(friend, t, i18n.language)}
                         </span>
-                      ) : null}
-                      {!friend.lastMessageIsSelf && friend.unreadCount ? (
-                        <span className="unread-badge">
-                          {friend.unreadCount > 99 ? '99+' : friend.unreadCount}
-                        </span>
-                      ) : null}
+                        {friend.lastMessageIsSelf ? (
+                          <span
+                            className={`read-checks ${friend.lastMessageReadAt ? 'read-checks-read' : ''}`}
+                            aria-label={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                            title={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                          >
+                            <span />
+                            {friend.lastMessageReadAt ? <span /> : null}
+                          </span>
+                        ) : null}
+                        {!friend.lastMessageIsSelf && friend.unreadCount ? (
+                          <span className="unread-badge">
+                            {friend.unreadCount > 99 ? '99+' : friend.unreadCount}
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    className="drawer-delete-friend"
+                    aria-label={t('chat.deleteFriendLabel', { name: friend.name })}
+                    title={t('chat.deleteFriend')}
+                    onClick={() => onDeleteFriend(friend.id)}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
               {!visibleFriendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
             </nav>

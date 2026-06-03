@@ -522,6 +522,52 @@ func createFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client) 
 	}
 }
 
+func handleDeleteFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req deleteFriendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	req.UserID = strings.TrimSpace(req.UserID)
+	req.FriendID = strings.TrimSpace(req.FriendID)
+	if req.UserID == "" || req.FriendID == "" || req.UserID == req.FriendID {
+		http.Error(w, "user_id and friend_id are required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := client.Database(databaseName).Collection(friendsName).DeleteMany(
+		r.Context(),
+		bson.M{"$or": bson.A{
+			bson.M{"user_id": req.UserID, "friend_id": req.FriendID},
+			bson.M{"user_id": req.FriendID, "friend_id": req.UserID},
+		}},
+	)
+	if err != nil {
+		log.Printf("刪除好友失敗: %v", err)
+		http.Error(w, "delete friend failed", http.StatusInternalServerError)
+		return
+	}
+	if result.DeletedCount == 0 {
+		http.Error(w, "friend relation not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleFriendRequests(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	applyCORS(w)
 
@@ -1359,6 +1405,9 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/friends", func(w http.ResponseWriter, r *http.Request) {
 		handleFriends(w, r, client)
+	})
+	mux.HandleFunc("/friends/delete", func(w http.ResponseWriter, r *http.Request) {
+		handleDeleteFriend(w, r, client)
 	})
 	mux.HandleFunc("/friend-requests", func(w http.ResponseWriter, r *http.Request) {
 		handleFriendRequests(w, r, client)

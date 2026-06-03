@@ -27,6 +27,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
     selectRoom,
     startChatWithUser,
     addFriend,
+    deleteFriend,
     createGroup,
     leaveGroup,
     attachFile,
@@ -86,6 +87,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
         onSelect={openRoom}
         onStartChat={openUserChat}
         onAddFriend={addFriend}
+        onDeleteFriend={deleteFriend}
         onCreateGroup={createGroup}
         onRefreshFriends={refreshFriends}
         onLogout={onLogout}

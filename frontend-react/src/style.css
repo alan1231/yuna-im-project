@@ -657,6 +657,15 @@ button {
   overflow-y: auto;
 }
 
+.drawer-contact-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 6px;
+  align-items: center;
+  border-radius: 8px;
+}
+
 .drawer-contact-item {
   width: 100%;
   min-height: 66px;
@@ -729,6 +738,29 @@ button {
 .drawer-contact-bottomline .presence-online {
   color: #7ab8ff;
   font-weight: 800;
+}
+
+.drawer-delete-friend {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffb4a8;
+  background: rgba(180, 35, 24, 0.12);
+  border: 1px solid rgba(255, 180, 168, 0.28);
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.drawer-delete-friend:hover,
+.drawer-delete-friend:focus-visible {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
 }
 
 .drawer-empty {

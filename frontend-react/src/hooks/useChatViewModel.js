@@ -830,6 +830,38 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [currentUser.id, t])
 
+  const deleteFriend = useCallback(async (roomId) => {
+    const room = roomsRef.current.find((item) => item.id === roomId)
+    if (!room?.isFriend) return
+    if (!window.confirm(t('chat.confirmDeleteFriend', { name: room.name }))) return
+
+    setRoomError('')
+    try {
+      const response = await fetch(`${API_URL}/friends/delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          friend_id: room.recipientId,
+        }),
+      })
+      if (!response.ok) throw new Error('delete friend failed')
+
+      const nextRooms = roomsRef.current.map((item) =>
+        item.id === room.id ? { ...item, isFriend: false, description: t('chat.conversation') } : item,
+      )
+      roomsRef.current = sortRooms(nextRooms)
+      setRooms(roomsRef.current)
+      await loadFriends()
+      await loadConversations()
+    } catch (error) {
+      console.error('Delete friend failed:', error)
+      setRoomError(t('chat.errors.deleteFriendFailed'))
+    }
+  }, [currentUser.id, loadConversations, loadFriends, t])
+
   const attachFile = (file) => {
     setFileAttachment(file)
   }
@@ -949,6 +981,7 @@ export const useChatViewModel = (currentUser) => {
     selectRoom,
     startChatWithUser,
     addFriend,
+    deleteFriend,
     createGroup,
     leaveGroup,
     attachFile,
