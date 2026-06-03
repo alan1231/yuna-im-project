@@ -92,3 +92,13 @@ type conversationResponse struct {
 	MemberIDs           []string   `json:"member_ids,omitempty"`
 	UnreadCount         int64      `json:"unread_count"`
 }
+
+type stockQuoteResponse struct {
+	Symbol        string  `json:"symbol"`
+	Status        string  `json:"status"`
+	Price         float64 `json:"price"`
+	ChangePct     float64 `json:"change_pct"`
+	DividendCount int     `json:"dividend_count"`
+	Source        string  `json:"source"`
+	Error         string  `json:"error,omitempty"`
+}

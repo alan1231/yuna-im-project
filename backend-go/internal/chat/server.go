@@ -1138,6 +1138,60 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 	}
 }
 
+func handleStockQuote(w http.ResponseWriter, r *http.Request) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rawSymbol := strings.TrimSpace(r.URL.Query().Get("symbol"))
+	if rawSymbol == "" {
+		http.Error(w, "symbol is required", http.StatusBadRequest)
+		return
+	}
+
+	symbol, validationError := parseStockCommand(rawSymbol)
+	if validationError != "" || symbol == "" {
+		http.Error(w, "invalid symbol", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), stockBotRequestTimeout)
+	defer cancel()
+
+	normalizedSymbol := normalizeStockSymbol(symbol)
+	stock, err := fetchStockData(ctx, normalizedSymbol)
+	response := stockQuoteResponse{
+		Symbol:        normalizedSymbol,
+		Status:        stock.Status,
+		Price:         stock.Price,
+		ChangePct:     stock.ChangePct,
+		DividendCount: len(stock.Dividends),
+		Source:        stock.Source,
+	}
+	if err != nil {
+		response.Status = "error"
+		response.Error = err.Error()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	statusCode := http.StatusOK
+	if response.Status != "ok" {
+		statusCode = http.StatusBadGateway
+	}
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("股票查詢診斷回應 JSON 失敗: %v", err)
+	}
+}
+
 func messagePreviewText(message bson.M) string {
 	text := strings.TrimSpace(fmt.Sprint(message["text"]))
 	if text != "" && text != "<nil>" {
@@ -1423,6 +1477,9 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/conversations", func(w http.ResponseWriter, r *http.Request) {
 		handleConversations(w, r, client)
+	})
+	mux.HandleFunc("/stock/quote", func(w http.ResponseWriter, r *http.Request) {
+		handleStockQuote(w, r)
 	})
 	registerAdminRoutes(mux, client, redisClient, cfg.AdminToken)
 

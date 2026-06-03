@@ -102,6 +102,7 @@ type stockData struct {
 	Price     float64
 	ChangePct float64
 	Dividends []stockDividend
+	Source    string
 }
 
 func processStockBotMessage(ctx context.Context, client *mongo.Client, message bson.M, messageID interface{}) {
@@ -357,6 +358,7 @@ func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) 
 		Price:     round(price, 2),
 		ChangePct: round(changePct, 2),
 		Dividends: dividends,
+		Source:    "yahoo",
 	}, nil
 }
 
@@ -447,6 +449,7 @@ func fetchTWSEStockInfoForMarket(ctx context.Context, symbol string, ticker stri
 		Symbol:    symbol,
 		Price:     round(price, 2),
 		ChangePct: round(changePct, 2),
+		Source:    fmt.Sprintf("twse-%s-live", market),
 	}, nil
 }
 
@@ -501,6 +504,7 @@ func fetchTWSEStockDayAllData(ctx context.Context, symbol string) (stockData, er
 			Symbol:    symbol,
 			Price:     round(closePrice, 2),
 			ChangePct: round(changePct, 2),
+			Source:    "twse-day-all",
 		}, nil
 	}
 
@@ -562,6 +566,7 @@ func fetchTWSEStockDayData(ctx context.Context, symbol string) (stockData, error
 		Symbol:    symbol,
 		Price:     round(closePrice, 2),
 		ChangePct: round(changePct, 2),
+		Source:    "twse-stock-day",
 	}, nil
 }
 
@@ -619,6 +624,7 @@ func fetchStooqStockData(ctx context.Context, symbol string) (stockData, error) 
 		Symbol:    symbol,
 		Price:     round(closePrice, 2),
 		ChangePct: round(changePct, 2),
+		Source:    "stooq",
 	}, nil
 }
 
