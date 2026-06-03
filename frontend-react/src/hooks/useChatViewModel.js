@@ -710,9 +710,9 @@ export const useChatViewModel = (currentUser) => {
     })
   }, [currentUser.id, touchConversationCache])
 
-  const sendMessage = useCallback(() => {
-    const text = userInput.trim()
-    const attachment = fileAttachment
+  const sendMessage = useCallback((presetText = '') => {
+    const text = String(presetText || userInput).trim()
+    const attachment = presetText ? null : fileAttachment
     if (!text && !attachment) return
 
     const socket = socketRef.current

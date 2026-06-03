@@ -81,7 +81,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
 
         {connectionError ? <p className="connection-error">{connectionError}</p> : null}
 
-        <MessageList messages={messages} activeRoom={activeRoom} />
+        <MessageList messages={messages} activeRoom={activeRoom} onQuickStockQuery={sendMessage} />
 
         <ChatComposer
           value={userInput}

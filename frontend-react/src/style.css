@@ -960,6 +960,65 @@ h1 {
   line-height: 1.6;
 }
 
+.stock-empty-state {
+  width: min(460px, 100%);
+  margin: auto;
+  padding: 24px;
+  display: grid;
+  gap: 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgba(18, 25, 38, 0.08);
+}
+
+.stock-empty-state > span {
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stock-empty-state h2 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+}
+
+.stock-empty-state p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.stock-empty-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stock-empty-actions button {
+  min-height: 42px;
+  color: var(--accent-dark);
+  background: #e7f5f2;
+  border: 1px solid #b9ded8;
+  border-radius: 8px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.stock-empty-actions button:hover,
+.stock-empty-actions button:focus-visible {
+  color: #ffffff;
+  background: var(--accent);
+  outline: none;
+}
+
+.stock-empty-state small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .message {
   position: relative;
   width: fit-content;
@@ -1873,6 +1932,14 @@ h1 {
 
   .message {
     max-width: 88%;
+  }
+
+  .stock-empty-state {
+    padding: 18px;
+  }
+
+  .stock-empty-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .composer {

@@ -29,7 +29,29 @@ const formatDateLabel = (value, t, language) => {
   })
 }
 
-export default function MessageList({ messages, activeRoom }) {
+const stockQuickQueries = ['2330', '2317', 'NVDA', 'TSM']
+
+function StockEmptyState({ activeRoom, onQuickStockQuery }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="stock-empty-state">
+      <span>{t('chat.stockEmptyKicker')}</span>
+      <h2>{activeRoom.name}</h2>
+      <p>{t('chat.stockEmptyDescription')}</p>
+      <div className="stock-empty-actions" aria-label={t('chat.stockQuickQueries')}>
+        {stockQuickQueries.map((symbol) => (
+          <button key={symbol} type="button" onClick={() => onQuickStockQuery?.(symbol)}>
+            {symbol}
+          </button>
+        ))}
+      </div>
+      <small>{t('chat.stockEmptyHint')}</small>
+    </div>
+  )
+}
+
+export default function MessageList({ messages, activeRoom, onQuickStockQuery }) {
   const { i18n, t } = useTranslation()
   const messageList = useRef(null)
   const messageEnd = useRef(null)
@@ -70,7 +92,12 @@ export default function MessageList({ messages, activeRoom }) {
 
   return (
     <section ref={messageList} className="message-list" aria-live="polite">
-      {messages.length === 0 ? <p className="empty-state">{activeRoom.description}</p> : null}
+      {messages.length === 0 && activeRoom.id === 'stock_bot' ? (
+        <StockEmptyState activeRoom={activeRoom} onQuickStockQuery={onQuickStockQuery} />
+      ) : null}
+      {messages.length === 0 && activeRoom.id !== 'stock_bot' ? (
+        <p className="empty-state">{activeRoom.description}</p>
+      ) : null}
 
       {messageItems.map((item) =>
         item.type === 'date' ? (
