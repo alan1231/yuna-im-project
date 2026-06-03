@@ -114,7 +114,7 @@ export default function MessageList({ messages, activeRoom, isStockBotPending = 
             {item.label}
           </div>
         ) : (
-          <MessageBubble key={item.key} message={item.message} />
+          <MessageBubble key={item.key} message={item.message} showSenderName={activeRoom.isGroup} />
         ),
       )}
 

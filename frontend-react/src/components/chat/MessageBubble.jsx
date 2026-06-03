@@ -77,7 +77,7 @@ function StockReplyCard({ stock, language, t }) {
   )
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, showSenderName = false }) {
   const { i18n, t } = useTranslation()
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false)
   const imagePreviewModal = useRef(null)
@@ -156,6 +156,9 @@ export default function MessageBubble({ message }) {
             <span />
             <span />
           </div>
+        ) : null}
+        {!isPending && showSenderName && !isSelf && message.sender ? (
+          <span className="message-sender-name">{message.sender}</span>
         ) : null}
         {!isPending && stockReply ? (
           <StockReplyCard stock={stockReply} language={i18n.language} t={t} />

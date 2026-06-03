@@ -14,6 +14,7 @@ const getConversationId = (userId, recipientId) => {
   const [firstId, secondId] = [userId, recipientId].sort()
   return `dm:${firstId}:${secondId}`
 }
+const isGroupConversation = (conversationId = '') => conversationId.startsWith('group:')
 const getInitials = (name) => name.trim().slice(0, 1).toUpperCase() || '?'
 const getCurrentTime = () => {
   return new Date().toLocaleTimeString('zh-TW', {
@@ -58,10 +59,13 @@ const normalizeIncomingMessage = (data, currentUserId) => {
   const senderId = data.sender_id || data.senderId || ''
   const recipientId = data.recipient_id || data.recipientId || ''
   const readAt = data.read_at || data.readAt || ''
+  const rawConversationId = data.conversation_id || data.conversationId || ''
   const conversationId =
-    senderId && recipientId
+    isGroupConversation(rawConversationId)
+      ? rawConversationId
+      : senderId && recipientId
       ? getConversationId(senderId, recipientId)
-      : data.conversation_id || data.conversationId || ''
+      : rawConversationId
 
   return {
     sender: data.sender || STOCK_BOT_NAME,
@@ -106,6 +110,23 @@ const createUserRoom = (currentUserId, user, description) => ({
   isFriend: false,
   online: Boolean(user.online),
   lastSeen: user.last_seen || '',
+  lastMessage: '',
+  lastMessageAt: '',
+  lastMessageTimeMs: 0,
+  lastMessageIsSelf: false,
+  lastMessageReadAt: '',
+  unreadCount: 0,
+})
+const createGroupRoom = (group, t) => ({
+  id: group.group_id,
+  name: group.name,
+  description: t('chat.group'),
+  initials: getInitials(group.name),
+  recipientId: group.group_id,
+  conversationId: group.conversation_id,
+  isFriend: false,
+  isGroup: true,
+  memberIds: group.member_ids || [],
   lastMessage: '',
   lastMessageAt: '',
   lastMessageTimeMs: 0,
@@ -286,6 +307,7 @@ export const useChatViewModel = (currentUser) => {
   const appendMessage = useCallback((data, options = {}) => {
     const message = normalizeIncomingMessage(data, currentUser.id)
     const conversationId = message.conversationId || getActiveRoom().conversationId
+    const isGroupMessage = isGroupConversation(conversationId)
     const otherUserId = message.isSelf ? message.recipientId : message.senderId
     const otherUserName = message.isSelf ? '' : message.sender
     const messageKey = getMessageKey(message)
@@ -298,7 +320,7 @@ export const useChatViewModel = (currentUser) => {
     if (keys.has(messageKey)) return
     keys.add(messageKey)
 
-    if (otherUserId && otherUserId !== STOCK_BOT_ID) {
+    if (!isGroupMessage && otherUserId && otherUserId !== STOCK_BOT_ID) {
       const knownName =
         availableUsersRef.current.find((item) => item.user_id === otherUserId)?.display_name || ''
       appendRoom({
@@ -444,6 +466,9 @@ export const useChatViewModel = (currentUser) => {
       case 'friend_added':
         appendRoom(createFriendRoom(currentUser.id, data.payload, t))
         break
+      case 'group_added':
+        appendRoom(createGroupRoom(data.payload, t))
+        break
       case 'read_receipt':
         applyReadReceipt(data.payload)
         break
@@ -559,6 +584,21 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [appendRoom, currentUser.id, t])
 
+  const loadGroups = useCallback(async () => {
+    try {
+      const url = new URL(`${API_URL}/groups`)
+      url.searchParams.set('user_id', currentUser.id)
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('load groups failed')
+
+      const groups = await response.json()
+      groups.forEach((group) => appendRoom(createGroupRoom(group, t)))
+    } catch (error) {
+      console.error('Group list load failed:', error)
+      setRoomError(t('chat.errors.groupsFailed'))
+    }
+  }, [appendRoom, currentUser.id, t])
+
   const loadConversations = useCallback(async () => {
     try {
       const url = new URL(`${API_URL}/conversations`)
@@ -569,19 +609,24 @@ export const useChatViewModel = (currentUser) => {
       const conversations = await response.json()
       conversations.forEach((conversation) => {
         const isStockBot = conversation.recipient_id === STOCK_BOT_ID
+        const isGroup = Boolean(conversation.is_group)
         const displayName = isStockBot ? t('chat.stockBotName') : conversation.display_name
         appendRoom({
           id: conversation.recipient_id,
           name: displayName,
           description: isStockBot
             ? t('chat.stockBotDescription')
-            : conversation.is_friend
+            : isGroup
+              ? t('chat.group')
+              : conversation.is_friend
               ? t('chat.friend')
               : t('chat.conversation'),
           initials: isStockBot ? t('chat.stockBotInitial') : getInitials(displayName),
           recipientId: conversation.recipient_id,
           conversationId: conversation.conversation_id,
           isFriend: Boolean(conversation.is_friend),
+          isGroup,
+          memberIds: conversation.member_ids || [],
           lastMessage: conversation.last_message || '',
           lastMessageAt: formatRoomTime(conversation.last_message_at),
           lastMessageTimeMs: getTimeMs(conversation.last_message_at),
@@ -595,6 +640,41 @@ export const useChatViewModel = (currentUser) => {
       setRoomError(t('chat.errors.conversationsFailed'))
     }
   }, [appendRoom, currentUser.id, t])
+
+  const createGroup = useCallback(async ({ name, memberIds }) => {
+    const groupName = name.trim()
+    const selectedMemberIds = [...new Set(memberIds)].filter(Boolean)
+    if (!groupName || !selectedMemberIds.length) return
+
+    setRoomError('')
+    try {
+      const response = await fetch(`${API_URL}/groups`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          name: groupName,
+          member_ids: selectedMemberIds,
+        }),
+      })
+      if (!response.ok) throw new Error('create group failed')
+
+      const group = await response.json()
+      const room = createGroupRoom(group, t)
+      appendRoom(room)
+      activeRoomIdRef.current = room.id
+      setActiveRoomId(room.id)
+      setUserInput('')
+      setFileAttachment(null)
+      touchConversationCache(room.conversationId)
+      window.setTimeout(sendActiveConversation, 0)
+    } catch (error) {
+      console.error('Create group failed:', error)
+      setRoomError(t('chat.errors.createGroupFailed'))
+    }
+  }, [appendRoom, currentUser.id, sendActiveConversation, t, touchConversationCache])
 
   const loadFriendRequests = useCallback(async () => {
     try {
@@ -752,6 +832,8 @@ export const useChatViewModel = (currentUser) => {
       if (!isActive) return
       await loadFriends()
       if (!isActive) return
+      await loadGroups()
+      if (!isActive) return
       await loadConversations()
       if (!isActive) return
       await loadFriendRequests()
@@ -774,6 +856,7 @@ export const useChatViewModel = (currentUser) => {
     loadConversations,
     loadFriendRequests,
     loadFriends,
+    loadGroups,
     loadMessagesForRoom,
     loadUsers,
   ])
@@ -795,6 +878,7 @@ export const useChatViewModel = (currentUser) => {
     selectRoom,
     startChatWithUser,
     addFriend,
+    createGroup,
     attachFile,
     clearFileAttachment,
     refreshFriends: loadFriends,

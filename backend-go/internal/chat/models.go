@@ -49,6 +49,21 @@ type respondFriendRequest struct {
 	Accept    bool   `json:"accept"`
 }
 
+type createGroupRequest struct {
+	UserID    string   `json:"user_id"`
+	Name      string   `json:"name"`
+	MemberIDs []string `json:"member_ids"`
+}
+
+type groupResponse struct {
+	GroupID        string    `json:"group_id" bson:"group_id"`
+	Name           string    `json:"name" bson:"name"`
+	MemberIDs      []string  `json:"member_ids" bson:"member_ids"`
+	ConversationID string    `json:"conversation_id" bson:"conversation_id"`
+	CreatedBy      string    `json:"created_by" bson:"created_by"`
+	CreatedAt      time.Time `json:"created_at" bson:"created_at"`
+}
+
 type websocketEvent struct {
 	Type    string `json:"type"`
 	Payload bson.M `json:"payload"`
@@ -63,5 +78,7 @@ type conversationResponse struct {
 	LastMessageSenderID string     `json:"last_message_sender_id"`
 	LastMessageReadAt   *time.Time `json:"last_message_read_at"`
 	IsFriend            bool       `json:"is_friend"`
+	IsGroup             bool       `json:"is_group"`
+	MemberIDs           []string   `json:"member_ids,omitempty"`
 	UnreadCount         int64      `json:"unread_count"`
 }

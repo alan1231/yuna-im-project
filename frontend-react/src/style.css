@@ -543,6 +543,50 @@ button {
   cursor: not-allowed;
 }
 
+.group-modal {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.group-member-picker {
+  max-height: 260px;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.group-member-option {
+  min-height: 50px;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: 18px 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: #e8eef6;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.group-member-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.group-member-option .room-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.group-member-option > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
 .drawer-toolbar {
   min-height: 78px;
   padding: 18px 18px 12px;
@@ -1187,6 +1231,14 @@ h1 {
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.message-sender-name {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .typing-indicator {
