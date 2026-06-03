@@ -776,6 +776,51 @@ func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client, h
 	}
 }
 
+func handleLeaveGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req leaveGroupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	req.UserID = strings.TrimSpace(req.UserID)
+	req.GroupID = strings.TrimSpace(req.GroupID)
+	if req.UserID == "" || req.GroupID == "" {
+		http.Error(w, "user_id and group_id are required", http.StatusBadRequest)
+		return
+	}
+
+	collection := client.Database(databaseName).Collection(groupsName)
+	result, err := collection.UpdateOne(
+		r.Context(),
+		bson.M{"group_id": req.GroupID, "member_ids": req.UserID},
+		bson.M{"$pull": bson.M{"member_ids": req.UserID}},
+	)
+	if err != nil {
+		log.Printf("退出群組失敗: %v", err)
+		http.Error(w, "leave group failed", http.StatusInternalServerError)
+		return
+	}
+	if result.MatchedCount == 0 {
+		http.Error(w, "group not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
 func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub) {
@@ -1009,7 +1054,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		memberIDs := []string{}
 		if isGroup {
 			group, err := lookupGroupByConversation(r.Context(), client, conversationID)
-			if err != nil {
+			if err != nil || !stringSliceContains(group.MemberIDs, userID) {
 				continue
 			}
 			otherID = group.GroupID
@@ -1320,6 +1365,9 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/groups", func(w http.ResponseWriter, r *http.Request) {
 		handleGroups(w, r, client, hub)
+	})
+	mux.HandleFunc("/groups/leave", func(w http.ResponseWriter, r *http.Request) {
+		handleLeaveGroup(w, r, client)
 	})
 	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
 		handleMessages(w, r, client)

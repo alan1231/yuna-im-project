@@ -701,6 +701,52 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [activateRoom, currentUser.id, loadConversations, loadGroups, t])
 
+  const leaveGroup = useCallback(async (roomId) => {
+    const room = roomsRef.current.find((item) => item.id === roomId)
+    if (!room?.isGroup) return
+    if (!window.confirm(t('chat.confirmLeaveGroup', { name: room.name }))) return
+
+    setRoomError('')
+    try {
+      const response = await fetch(`${API_URL}/groups/leave`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          group_id: room.recipientId,
+        }),
+      })
+      if (!response.ok) throw new Error('leave group failed')
+
+      const nextRooms = roomsRef.current.filter((item) => item.id !== room.id)
+      roomsRef.current = sortRooms(nextRooms)
+      setRooms(roomsRef.current)
+      setMessagesByConversation((currentMessages) => {
+        const nextMessages = { ...currentMessages }
+        delete nextMessages[room.conversationId]
+        return nextMessages
+      })
+      loadedConversationIdsRef.current.delete(room.conversationId)
+      messageKeysByConversationRef.current.delete(room.conversationId)
+      conversationCacheAccessRef.current.delete(room.conversationId)
+
+      const fallbackRoom = roomsRef.current.find((item) => item.id === STOCK_BOT_ID) || initialRooms[0]
+      activeRoomIdRef.current = fallbackRoom.id
+      setActiveRoomId(fallbackRoom.id)
+      setUserInput('')
+      setFileAttachment(null)
+      touchConversationCache(fallbackRoom.conversationId)
+      await loadGroups()
+      await loadConversations()
+      window.setTimeout(sendActiveConversation, 0)
+    } catch (error) {
+      console.error('Leave group failed:', error)
+      setRoomError(t('chat.errors.leaveGroupFailed'))
+    }
+  }, [currentUser.id, initialRooms, loadConversations, loadGroups, sendActiveConversation, t, touchConversationCache])
+
   const loadFriendRequests = useCallback(async () => {
     try {
       const url = new URL(`${API_URL}/friend-requests`)
@@ -904,6 +950,7 @@ export const useChatViewModel = (currentUser) => {
     startChatWithUser,
     addFriend,
     createGroup,
+    leaveGroup,
     attachFile,
     clearFileAttachment,
     refreshFriends: loadFriends,

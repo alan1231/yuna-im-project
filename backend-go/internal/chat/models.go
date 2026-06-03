@@ -55,6 +55,11 @@ type createGroupRequest struct {
 	MemberIDs []string `json:"member_ids"`
 }
 
+type leaveGroupRequest struct {
+	UserID  string `json:"user_id"`
+	GroupID string `json:"group_id"`
+}
+
 type groupResponse struct {
 	GroupID        string    `json:"group_id" bson:"group_id"`
 	Name           string    `json:"name" bson:"name"`

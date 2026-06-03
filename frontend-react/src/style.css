@@ -975,6 +975,55 @@ button {
   gap: 10px;
 }
 
+.chat-title-block {
+  min-width: 0;
+}
+
+.chat-title-block h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-subtitle {
+  max-width: min(720px, 60vw);
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.leave-group-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: #b42318;
+  background: #fff3f0;
+  border: 1px solid #ffcdc4;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.leave-group-button:hover {
+  color: #ffffff;
+  background: #d92d20;
+  border-color: #d92d20;
+}
+
 .chat-back-button {
   display: none;
   width: 38px;
@@ -2146,6 +2195,9 @@ h1 {
 
   .chat-header {
     padding-block: 12px;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .chat-back-button {
@@ -2156,6 +2208,18 @@ h1 {
 
   .chat-header h1 {
     font-size: 24px;
+  }
+
+  .chat-header-actions {
+    width: 100%;
+    padding-left: 48px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .chat-subtitle {
+    max-width: calc(100vw - 112px);
+    font-size: 13px;
   }
 
   .message {

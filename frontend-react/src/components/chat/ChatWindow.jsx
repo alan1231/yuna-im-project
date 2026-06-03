@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatViewModel } from '../../hooks/useChatViewModel'
 import ChatComposer from './ChatComposer.jsx'
@@ -28,6 +28,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
     startChatWithUser,
     addFriend,
     createGroup,
+    leaveGroup,
     attachFile,
     clearFileAttachment,
     refreshFriends,
@@ -43,6 +44,17 @@ export default function ChatWindow({ currentUser, onLogout }) {
     startChatWithUser(user)
     setMobileView('chat')
   }
+
+  const activeRoomMemberNames = useMemo(() => {
+    if (!activeRoom?.isGroup) return []
+
+    const namesById = new Map([[currentUser.id, currentUser.displayName]])
+    availableUsers.forEach((user) => {
+      namesById.set(user.user_id, user.display_name)
+    })
+
+    return (activeRoom.memberIds || []).map((memberId) => namesById.get(memberId) || memberId)
+  }, [activeRoom, availableUsers, currentUser.displayName, currentUser.id])
 
   useEffect(() => {
     const syncMobileView = () => {
@@ -80,7 +92,13 @@ export default function ChatWindow({ currentUser, onLogout }) {
       />
 
       <section className="chat-panel">
-        <ChatHeader isConnected={isConnected} room={activeRoom} onBack={() => setMobileView('rooms')} />
+        <ChatHeader
+          isConnected={isConnected}
+          room={activeRoom}
+          memberNames={activeRoomMemberNames}
+          onBack={() => setMobileView('rooms')}
+          onLeaveGroup={() => leaveGroup(activeRoom.id)}
+        />
 
         {connectionError ? <p className="connection-error">{connectionError}</p> : null}
 
