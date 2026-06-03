@@ -19,9 +19,10 @@ MongoDB stores durable chat data. Redis stores short-lived presence state such a
 
 When `ADMIN_TOKEN` is set, admin APIs require either `X-Admin-Token: <token>` or `Authorization: Bearer <token>`.
 
-When `STOCK_BOT_HEALTH_URL` is set, messages sent to `stock_bot` trigger a
-background HTTP request to that URL. In the Render MVP deployment this wakes the
-Python stock bot, for example `https://python-ai-nqi6.onrender.com/healthz`.
+When `STOCK_BOT_HEALTH_URL` is set, user list/create requests and messages sent
+to `stock_bot` trigger a throttled background HTTP request to that URL. In the
+Render MVP deployment this wakes the Python stock bot, for example
+`https://python-ai-nqi6.onrender.com/healthz`.
 
 ## Admin APIs
 

@@ -31,6 +31,10 @@ const (
 
 var databaseName = defaultDatabaseName
 var allowedOrigins = defaultAllowedOrigins
+var stockBotWakeState = struct {
+	sync.Mutex
+	lastAttempt time.Time
+}{}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -257,13 +261,15 @@ func isOriginAllowed(origin string) bool {
 	return false
 }
 
-func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client, stockBotHealthURL string) {
 	applyCORS(w)
 
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+
+	wakeStockBotSoon(stockBotHealthURL)
 
 	switch r.Method {
 	case http.MethodGet:
@@ -715,7 +721,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			return
 		}
 		if recipientID == stockBotID {
-			go wakeStockBot(stockBotHealthURL)
+			wakeStockBotSoon(stockBotHealthURL)
 		}
 
 		fmt.Printf("收到訊息並存入資料庫: %v\n", msg["text"])
@@ -748,6 +754,22 @@ func wakeStockBot(healthURL string) {
 		return
 	}
 	log.Printf("股票機器人喚醒完成")
+}
+
+func wakeStockBotSoon(healthURL string) {
+	if healthURL == "" {
+		return
+	}
+
+	stockBotWakeState.Lock()
+	if time.Since(stockBotWakeState.lastAttempt) < time.Minute {
+		stockBotWakeState.Unlock()
+		return
+	}
+	stockBotWakeState.lastAttempt = time.Now()
+	stockBotWakeState.Unlock()
+
+	go wakeStockBot(healthURL)
 }
 
 func writeWebSocketEvents(ctx context.Context, ws *websocket.Conn, client *wsClient) {
@@ -1086,7 +1108,7 @@ func Run(cfg Config) error {
 		handleConnections(w, r, client, presence, hub, cfg.StockBotHealthURL)
 	})
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
-		handleUsers(w, r, client)
+		handleUsers(w, r, client, cfg.StockBotHealthURL)
 	})
 	mux.HandleFunc("/friends", func(w http.ResponseWriter, r *http.Request) {
 		handleFriends(w, r, client)
