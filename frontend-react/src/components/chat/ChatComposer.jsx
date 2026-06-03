@@ -45,6 +45,7 @@ export default function ChatComposer({
   onChange,
   fileAttachment = null,
   allowAttachments = true,
+  variant = 'chat',
   canSend,
   placeholder,
   submitLabel,
@@ -174,7 +175,7 @@ export default function ChatComposer({
 
   return (
     <form
-      className={`composer ${isDraggingFile && allowAttachments ? 'composer-dragging' : ''}`}
+      className={`composer composer-${variant} ${isDraggingFile && allowAttachments ? 'composer-dragging' : ''}`}
       onSubmit={submit}
       onDragEnter={(event) => {
         event.preventDefault()
@@ -236,17 +237,24 @@ export default function ChatComposer({
       {allowAttachments ? (
         <button
           type="button"
-          className="composer-file-button"
+          className="composer-icon-button composer-file-button"
           aria-label={t('chat.chooseFile')}
           title={t('chat.chooseFile')}
           onClick={openFilePicker}
         >
-          {t('chat.file')}
+          <span aria-hidden="true">+</span>
         </button>
       ) : null}
 
-      <button type="submit" disabled={!canSend || isProcessingFile}>
-        {submitLabel || t('chat.send')}
+      <button
+        type="submit"
+        className={`composer-submit-button ${variant === 'stock' ? 'composer-submit-search' : ''}`}
+        aria-label={submitLabel || t('chat.send')}
+        title={submitLabel || t('chat.send')}
+        disabled={!canSend || isProcessingFile}
+      >
+        <span aria-hidden="true">{variant === 'stock' ? '⌕' : '↑'}</span>
+        <span className="composer-submit-label">{submitLabel || t('chat.send')}</span>
       </button>
     </form>
   )

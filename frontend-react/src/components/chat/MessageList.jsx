@@ -31,7 +31,7 @@ const formatDateLabel = (value, t, language) => {
 
 const stockQuickQueries = ['2330', '2317', 'NVDA', 'TSM']
 
-function StockEmptyState({ activeRoom, onQuickStockQuery }) {
+function StockEmptyState({ activeRoom, isStockBotPending, onQuickStockQuery }) {
   const { t } = useTranslation()
 
   return (
@@ -41,7 +41,12 @@ function StockEmptyState({ activeRoom, onQuickStockQuery }) {
       <p>{t('chat.stockEmptyDescription')}</p>
       <div className="stock-empty-actions" aria-label={t('chat.stockQuickQueries')}>
         {stockQuickQueries.map((symbol) => (
-          <button key={symbol} type="button" onClick={() => onQuickStockQuery?.(symbol)}>
+          <button
+            key={symbol}
+            type="button"
+            disabled={isStockBotPending}
+            onClick={() => onQuickStockQuery?.(symbol)}
+          >
             {symbol}
           </button>
         ))}
@@ -51,7 +56,7 @@ function StockEmptyState({ activeRoom, onQuickStockQuery }) {
   )
 }
 
-export default function MessageList({ messages, activeRoom, onQuickStockQuery }) {
+export default function MessageList({ messages, activeRoom, isStockBotPending = false, onQuickStockQuery }) {
   const { i18n, t } = useTranslation()
   const messageList = useRef(null)
   const messageEnd = useRef(null)
@@ -93,7 +98,11 @@ export default function MessageList({ messages, activeRoom, onQuickStockQuery })
   return (
     <section ref={messageList} className="message-list" aria-live="polite">
       {messages.length === 0 && activeRoom.id === 'stock_bot' ? (
-        <StockEmptyState activeRoom={activeRoom} onQuickStockQuery={onQuickStockQuery} />
+        <StockEmptyState
+          activeRoom={activeRoom}
+          isStockBotPending={isStockBotPending}
+          onQuickStockQuery={onQuickStockQuery}
+        />
       ) : null}
       {messages.length === 0 && activeRoom.id !== 'stock_bot' ? (
         <p className="empty-state">{activeRoom.description}</p>

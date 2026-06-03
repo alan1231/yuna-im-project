@@ -23,6 +23,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
     connectionError,
     roomError,
     canSend,
+    isStockBotPending,
     selectRoom,
     startChatWithUser,
     addFriend,
@@ -81,20 +82,26 @@ export default function ChatWindow({ currentUser, onLogout }) {
 
         {connectionError ? <p className="connection-error">{connectionError}</p> : null}
 
-        <MessageList messages={messages} activeRoom={activeRoom} onQuickStockQuery={sendMessage} />
+        <MessageList
+          messages={messages}
+          activeRoom={activeRoom}
+          isStockBotPending={isStockBotPending}
+          onQuickStockQuery={sendMessage}
+        />
 
         <ChatComposer
           value={userInput}
           onChange={setUserInput}
           fileAttachment={fileAttachment}
           allowAttachments={activeRoom.id !== 'stock_bot'}
+          variant={activeRoom.id === 'stock_bot' ? 'stock' : 'chat'}
           canSend={canSend}
           placeholder={
             activeRoom.id === 'stock_bot'
               ? t('chat.stockPlaceholder')
               : t('chat.messagePlaceholder', { name: activeRoom.name })
           }
-          submitLabel={activeRoom.id === 'stock_bot' ? t('chat.analyze') : t('chat.send')}
+          submitLabel={activeRoom.id === 'stock_bot' ? t('chat.query') : t('chat.send')}
           onAttachFile={attachFile}
           onClearFile={clearFileAttachment}
           onSend={sendMessage}

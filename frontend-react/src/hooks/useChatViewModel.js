@@ -169,7 +169,8 @@ export const useChatViewModel = (currentUser) => {
     [activeRoomId, rooms],
   )
   const messages = messagesByConversation[activeRoom?.conversationId] || []
-  const canSend = userInput.trim().length > 0 || Boolean(fileAttachment)
+  const isStockBotPending = activeRoom?.id === STOCK_BOT_ID && messages.some((message) => message.isPending)
+  const canSend = (userInput.trim().length > 0 || Boolean(fileAttachment)) && !isStockBotPending
 
   useEffect(() => {
     roomsRef.current = rooms
@@ -790,6 +791,7 @@ export const useChatViewModel = (currentUser) => {
     connectionError,
     roomError,
     canSend,
+    isStockBotPending,
     selectRoom,
     startChatWithUser,
     addFriend,

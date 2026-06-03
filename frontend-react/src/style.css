@@ -1091,6 +1091,13 @@ h1 {
   outline: none;
 }
 
+.stock-empty-actions button:disabled {
+  color: #8b95a1;
+  background: #e5e9ef;
+  border-color: #d9dee7;
+  cursor: not-allowed;
+}
+
 .stock-empty-state small {
   color: var(--muted);
   line-height: 1.5;
@@ -1488,11 +1495,16 @@ h1 {
   z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 12px;
-  align-items: end;
+  gap: 10px;
+  align-items: center;
   padding: 16px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+.composer-stock {
+  grid-template-columns: minmax(0, 1fr) auto;
+  background: #f8fbfb;
 }
 
 .composer-dragging {
@@ -1512,7 +1524,7 @@ h1 {
   color: var(--text);
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 999px;
   outline: none;
 }
 
@@ -1584,20 +1596,58 @@ h1 {
 }
 
 .composer button {
-  min-width: 84px;
+  min-width: 46px;
   min-height: 46px;
-  padding: 0 18px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   color: #ffffff;
   background: var(--accent);
-  border-radius: 8px;
-  font-weight: 700;
+  border-radius: 999px;
+  font-weight: 900;
   cursor: pointer;
 }
 
 .composer .composer-file-button {
+  width: 46px;
+  padding: 0;
   color: var(--accent-dark);
   background: var(--accent-soft);
   border: 1px solid rgba(15, 118, 110, 0.28);
+}
+
+.composer-icon-button span,
+.composer-submit-button > span:first-child {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.composer-submit-search {
+  min-width: 96px;
+}
+
+.composer-submit-label {
+  font-size: 14px;
+}
+
+.composer-chat .composer-submit-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.composer-chat .composer-submit-button {
+  width: 46px;
+  padding: 0;
+}
+
+.composer-stock .composer-submit-button {
+  padding: 0 16px;
 }
 
 .composer .composer-file-button:hover {
@@ -2065,15 +2115,25 @@ h1 {
   }
 
   .composer {
-    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px;
     padding: 10px;
   }
 
   .composer button {
     width: auto;
-    min-width: 56px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0 12px;
+  }
+
+  .composer-chat .composer-file-button,
+  .composer-chat .composer-submit-button {
+    width: 44px;
+    padding: 0;
+  }
+
+  .composer-stock .composer-submit-button {
+    min-width: 82px;
   }
 
   .message-image {
