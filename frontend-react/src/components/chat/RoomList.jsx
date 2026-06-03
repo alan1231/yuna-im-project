@@ -79,7 +79,7 @@ export default function RoomList({
   }, [availableUsers, normalizedSearch, rooms])
 
   const friendRooms = useMemo(() => {
-    return rooms.filter((room) => room.id !== 'stock_bot' && room.isFriend)
+    return rooms.filter((room) => room.id !== 'stock_bot' && room.isFriend && !room.isGroup)
   }, [rooms])
 
   const visibleFriendRooms = useMemo(() => {

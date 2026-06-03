@@ -250,12 +250,18 @@ export const useChatViewModel = (currentUser) => {
     setRooms((currentRooms) => {
       const existingRoom = currentRooms.find((item) => item.id === room.id)
       if (existingRoom) {
-        const isFriend = existingRoom.isFriend || room.isFriend || room.description === t('chat.friend')
+        const isGroup = existingRoom.isGroup || room.isGroup
+        const isFriend = !isGroup && (existingRoom.isFriend || room.isFriend || room.description === t('chat.friend'))
         resolvedRoom = {
           ...existingRoom,
           ...room,
-          description: isFriend ? t('chat.friend') : room.description || existingRoom.description,
+          description: isGroup
+            ? room.description || existingRoom.description
+            : isFriend
+              ? t('chat.friend')
+              : room.description || existingRoom.description,
           isFriend,
+          isGroup,
           lastMessage: room.lastMessage || existingRoom.lastMessage,
           lastMessageAt: room.lastMessageAt || existingRoom.lastMessageAt,
           lastMessageTimeMs: room.lastMessageTimeMs || existingRoom.lastMessageTimeMs,
