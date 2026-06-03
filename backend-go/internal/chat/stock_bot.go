@@ -57,6 +57,11 @@ type twseStockInfoResponse struct {
 	ResponseCode string `json:"rtcode"`
 }
 
+type twseStockDayResponse struct {
+	Status string     `json:"stat"`
+	Data   [][]string `json:"data"`
+}
+
 type stockDividend struct {
 	Amount float64
 	Date   time.Time
@@ -261,7 +266,17 @@ func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) 
 
 func fetchFallbackStockData(ctx context.Context, symbol string) (stockData, error) {
 	if regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol) {
-		return fetchTWSEStockData(ctx, symbol)
+		stock, err := fetchTWSEStockData(ctx, symbol)
+		if err == nil && stock.Status == "ok" {
+			return stock, nil
+		}
+		if err != nil {
+			log.Printf("TWSE 即時查詢失敗: symbol=%s err=%v", symbol, err)
+		}
+		if stock.Status != "" && stock.Status != "not_found" {
+			log.Printf("TWSE 即時查詢未取得資料: symbol=%s status=%s", symbol, stock.Status)
+		}
+		return fetchTWSEStockDayData(ctx, symbol)
 	}
 	return fetchStooqStockData(ctx, symbol)
 }
@@ -287,6 +302,7 @@ func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		log.Printf("TWSE 即時查詢 HTTP 狀態異常: symbol=%s status=%d", symbol, resp.StatusCode)
 		return stockData{Status: "error", Symbol: symbol}, nil
 	}
 
@@ -318,6 +334,64 @@ func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
 	}, nil
 }
 
+func fetchTWSEStockDayData(ctx context.Context, symbol string) (stockData, error) {
+	ticker := strings.TrimSuffix(symbol, ".TW")
+	query := url.Values{}
+	query.Set("date", time.Now().In(time.FixedZone("Asia/Taipei", 8*60*60)).Format("20060102"))
+	query.Set("stockNo", ticker)
+	query.Set("response", "json")
+
+	endpoint := fmt.Sprintf("https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?%s", query.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return stockData{}, err
+	}
+	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return stockData{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("TWSE 日資料查詢 HTTP 狀態異常: symbol=%s status=%d", symbol, resp.StatusCode)
+		return stockData{Status: "error", Symbol: symbol}, nil
+	}
+
+	var payload twseStockDayResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return stockData{}, err
+	}
+	if payload.Status != "OK" || len(payload.Data) == 0 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	latest := payload.Data[len(payload.Data)-1]
+	if len(latest) < 8 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	closePrice := parseMarketNumber(latest[6])
+	change := parseMarketNumber(strings.TrimPrefix(latest[7], "+"))
+	if closePrice == 0 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	previousClose := closePrice - change
+	changePct := 0.0
+	if previousClose != 0 {
+		changePct = (change / previousClose) * 100
+	}
+
+	return stockData{
+		Status:    "ok",
+		Symbol:    symbol,
+		Price:     round(closePrice, 2),
+		ChangePct: round(changePct, 2),
+	}, nil
+}
+
 func fetchStooqStockData(ctx context.Context, symbol string) (stockData, error) {
 	stooqSymbol := strings.ToLower(symbol)
 	if !strings.Contains(stooqSymbol, ".") {
@@ -344,6 +418,7 @@ func fetchStooqStockData(ctx context.Context, symbol string) (stockData, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		log.Printf("Stooq 查詢 HTTP 狀態異常: symbol=%s stooq_symbol=%s status=%d", symbol, stooqSymbol, resp.StatusCode)
 		return stockData{Status: "error", Symbol: symbol}, nil
 	}
 
