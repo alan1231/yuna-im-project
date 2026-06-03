@@ -136,6 +136,7 @@ const resources = {
           date: '最近上線於 {{date}}',
         },
         confirmFriendRequest: '{{name}} 想加你為好友，是否同意？',
+        confirmGroupInvite: '你被邀請加入「{{name}}」，要現在開啟這個群組嗎？',
         errors: {
           invalidMessage: '收到的訊息格式不正確',
           connectionFailed: '無法連線到 Go 後端，請確認 {{url}} 已啟動',
@@ -303,6 +304,7 @@ const resources = {
           date: 'Last seen on {{date}}',
         },
         confirmFriendRequest: '{{name}} wants to add you as a friend. Accept?',
+        confirmGroupInvite: 'You were invited to "{{name}}". Open this group now?',
         errors: {
           invalidMessage: 'The received message format is invalid',
           connectionFailed: 'Could not connect to the Go backend. Confirm {{url}} is running',

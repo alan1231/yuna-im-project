@@ -181,6 +181,7 @@ export const useChatViewModel = (currentUser) => {
   const availableUsersRef = useRef(availableUsers)
   const socketRef = useRef(null)
   const handledRequestIdsRef = useRef(new Set())
+  const handledGroupIdsRef = useRef(new Set())
   const loadedConversationIdsRef = useRef(new Set())
   const messageKeysByConversationRef = useRef(new Map())
   const conversationCacheAccessRef = useRef(new Map())
@@ -450,6 +451,33 @@ export const useChatViewModel = (currentUser) => {
     await respondFriendRequest(request.request_id, accepted)
   }, [rememberHandledRequest, respondFriendRequest, t])
 
+  const activateRoom = useCallback((room) => {
+    appendRoom(room)
+    roomsRef.current = sortRooms([...roomsRef.current.filter((item) => item.id !== room.id), room])
+    activeRoomIdRef.current = room.id
+    setActiveRoomId(room.id)
+    setUserInput('')
+    setFileAttachment(null)
+    touchConversationCache(room.conversationId)
+    window.setTimeout(sendActiveConversation, 0)
+  }, [appendRoom, sendActiveConversation, touchConversationCache])
+
+  const handleGroupAdded = useCallback((group) => {
+    if (!group?.group_id || handledGroupIdsRef.current.has(group.group_id)) return
+
+    handledGroupIdsRef.current.add(group.group_id)
+    const room = createGroupRoom(group, t)
+    appendRoom(room)
+    roomsRef.current = sortRooms([...roomsRef.current.filter((item) => item.id !== room.id), room])
+
+    if (group.created_by === currentUser.id) return
+
+    const shouldOpen = window.confirm(t('chat.confirmGroupInvite', { name: group.name }))
+    if (shouldOpen) {
+      activateRoom(room)
+    }
+  }, [activateRoom, appendRoom, currentUser.id, t])
+
   const handleWebSocketEvent = useCallback(async (data) => {
     if (!data.type) {
       appendMessage(data)
@@ -467,7 +495,7 @@ export const useChatViewModel = (currentUser) => {
         appendRoom(createFriendRoom(currentUser.id, data.payload, t))
         break
       case 'group_added':
-        appendRoom(createGroupRoom(data.payload, t))
+        handleGroupAdded(data.payload)
         break
       case 'read_receipt':
         applyReadReceipt(data.payload)
@@ -475,7 +503,7 @@ export const useChatViewModel = (currentUser) => {
       default:
         console.warn('Unknown WebSocket event:', data)
     }
-  }, [appendMessage, appendRoom, applyReadReceipt, currentUser.id, handleFriendRequest, t])
+  }, [appendMessage, appendRoom, applyReadReceipt, currentUser.id, handleFriendRequest, handleGroupAdded, t])
 
   const disconnect = useCallback(() => {
     if (!socketRef.current) return
@@ -663,18 +691,15 @@ export const useChatViewModel = (currentUser) => {
 
       const group = await response.json()
       const room = createGroupRoom(group, t)
-      appendRoom(room)
-      activeRoomIdRef.current = room.id
-      setActiveRoomId(room.id)
-      setUserInput('')
-      setFileAttachment(null)
-      touchConversationCache(room.conversationId)
-      window.setTimeout(sendActiveConversation, 0)
+      handledGroupIdsRef.current.add(group.group_id)
+      activateRoom(room)
+      await loadGroups()
+      await loadConversations()
     } catch (error) {
       console.error('Create group failed:', error)
       setRoomError(t('chat.errors.createGroupFailed'))
     }
-  }, [appendRoom, currentUser.id, sendActiveConversation, t, touchConversationCache])
+  }, [activateRoom, currentUser.id, loadConversations, loadGroups, t])
 
   const loadFriendRequests = useCallback(async () => {
     try {

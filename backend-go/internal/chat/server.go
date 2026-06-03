@@ -657,7 +657,7 @@ func createFriendPair(ctx context.Context, client *mongo.Client, request friendR
 	return nil
 }
 
-func handleGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func handleGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client, hub *changeStreamHub) {
 	applyCORS(w)
 
 	if r.Method == http.MethodOptions {
@@ -669,7 +669,7 @@ func handleGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) 
 	case http.MethodGet:
 		listGroups(w, r, client)
 	case http.MethodPost:
-		createGroup(w, r, client)
+		createGroup(w, r, client, hub)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -708,7 +708,7 @@ func listGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	}
 }
 
-func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client, hub *changeStreamHub) {
 	var req createGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -752,6 +752,22 @@ func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 		log.Printf("群組寫入 MongoDB 失敗: %v", err)
 		http.Error(w, "create group failed", http.StatusInternalServerError)
 		return
+	}
+
+	if hub != nil {
+		event := changeStreamEvent{
+			OperationType: "insert",
+			FullDocument: bson.M{
+				"group_id":        group.GroupID,
+				"name":            group.Name,
+				"member_ids":      group.MemberIDs,
+				"conversation_id": group.ConversationID,
+				"created_by":      group.CreatedBy,
+				"created_at":      group.CreatedAt,
+			},
+		}
+		event.Namespace.Collection = groupsName
+		hub.publish(r.Context(), event)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1303,7 +1319,7 @@ func Run(cfg Config) error {
 		handleFriendRequests(w, r, client)
 	})
 	mux.HandleFunc("/groups", func(w http.ResponseWriter, r *http.Request) {
-		handleGroups(w, r, client)
+		handleGroups(w, r, client, hub)
 	})
 	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
 		handleMessages(w, r, client)
