@@ -132,6 +132,13 @@ const resources = {
           fileProcessFailed: '檔案處理失敗。',
         },
       },
+      stockCard: {
+        price: '今日股價',
+        change: '漲跌幅',
+        latestDividend: '最近一次股利',
+        trailingTotal: '近 12 個月合計',
+        noDividends: '暫無股利資料',
+      },
     },
   },
   en: {
@@ -143,7 +150,7 @@ const resources = {
           create: 'Create your account',
         },
         copy: {
-          login: 'Enter an existing display name to return to chat and the stock bot.',
+          login: 'Enter an existing display name to return to chat and Market Helper.',
           create: 'Enter an unused display name to start chatting.',
         },
         modeLabel: 'Account mode',
@@ -237,7 +244,7 @@ const resources = {
         pendingImage: 'Image to send',
         processingFile: 'Processing file...',
         imagePreviewClose: 'Close image preview',
-        stockBotTyping: 'The stock bot is replying',
+        stockBotTyping: 'Market Helper is replying',
         presence: {
           online: 'Online',
           unknown: 'Last seen time unknown',
@@ -263,6 +270,13 @@ const resources = {
           imageStillTooLarge: 'The image was compressed but is still over 2 MB. Use a smaller image.',
           fileProcessFailed: 'File processing failed.',
         },
+      },
+      stockCard: {
+        price: 'Price today',
+        change: 'Change',
+        latestDividend: 'Latest dividend',
+        trailingTotal: 'Trailing 12-month total',
+        noDividends: 'No dividend data',
       },
     },
   },

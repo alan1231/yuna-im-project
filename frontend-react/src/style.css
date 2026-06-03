@@ -1221,6 +1221,131 @@ h1 {
   font-weight: 700;
 }
 
+.message-stock-card {
+  max-width: min(82%, 520px);
+  padding: 0;
+  overflow: hidden;
+  background: #ffffff;
+  border-color: #cad7e3;
+  border-radius: 8px;
+  --bubble-bg: #ffffff;
+  --bubble-border: #cad7e3;
+}
+
+.message-stock-card .message-footer {
+  min-height: 28px;
+  margin: 0;
+  padding: 6px 10px 8px;
+  float: none;
+  justify-content: flex-end;
+  background: #ffffff;
+}
+
+.stock-card {
+  width: min(420px, 72vw);
+  display: grid;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.stock-card-header {
+  min-height: 72px;
+  padding: 16px;
+  display: grid;
+  gap: 4px;
+  background: #102a43;
+  color: #ffffff;
+}
+
+.stock-card-kicker {
+  color: #9edbd5;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stock-card-header strong {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.stock-card-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--border);
+}
+
+.stock-card-metrics section {
+  min-width: 0;
+  padding: 14px 16px;
+  display: grid;
+  gap: 5px;
+}
+
+.stock-card-metrics section + section {
+  border-left: 1px solid var(--border);
+}
+
+.stock-card-metrics span,
+.stock-card-dividend-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stock-card-metrics strong {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.stock-card-value-up {
+  color: var(--price-up);
+}
+
+.stock-card-value-down {
+  color: var(--price-down);
+}
+
+.stock-card-dividend {
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stock-card-dividend p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.stock-card-dividend-summary {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.stock-card-dividend-summary strong {
+  text-align: right;
+}
+
+.stock-card-records {
+  display: grid;
+}
+
+.stock-card-records div {
+  min-height: 34px;
+  padding: 8px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid #edf1f5;
+  font-size: 13px;
+}
+
+.stock-card-records span {
+  color: var(--muted);
+}
+
 .composer {
   grid-area: composer;
   position: relative;
