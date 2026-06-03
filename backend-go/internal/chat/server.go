@@ -26,6 +26,7 @@ const (
 	usersName          = "users"
 	friendsName        = "friends"
 	friendRequestsName = "friend_requests"
+	groupsName         = "groups"
 	stockBotID         = "stock_bot"
 )
 
@@ -114,6 +115,7 @@ func (hub *changeStreamHub) run(ctx context.Context) {
 				collectionName,
 				friendRequestsName,
 				friendsName,
+				groupsName,
 			}}}},
 		}}},
 	}
@@ -211,7 +213,10 @@ func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
 	case collectionName:
 		senderID, _ := event.FullDocument["sender_id"].(string)
 		recipientID, _ := event.FullDocument["recipient_id"].(string)
-		return senderID == client.userID || recipientID == client.userID
+		if senderID == client.userID || recipientID == client.userID {
+			return true
+		}
+		return stringSliceContains(bsonStringSlice(event.FullDocument["participant_ids"]), client.userID)
 	case friendRequestsName:
 		toUserID, _ := event.FullDocument["to_user_id"].(string)
 		status, _ := event.FullDocument["status"].(string)
@@ -219,6 +224,8 @@ func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
 	case friendsName:
 		userID, _ := event.FullDocument["user_id"].(string)
 		return userID == client.userID
+	case groupsName:
+		return stringSliceContains(bsonStringSlice(event.FullDocument["member_ids"]), client.userID)
 	default:
 		return false
 	}
@@ -228,6 +235,12 @@ func conversationIDFor(userA string, userB string) string {
 	ids := []string{strings.TrimSpace(userA), strings.TrimSpace(userB)}
 	sort.Strings(ids)
 	return fmt.Sprintf("dm:%s:%s", ids[0], ids[1])
+}
+
+func groupConversationID(groupID string, memberIDs []string) string {
+	ids := append([]string{}, memberIDs...)
+	sort.Strings(ids)
+	return fmt.Sprintf("group:%s:%s", strings.TrimSpace(groupID), strings.Join(ids, ":"))
 }
 
 // applyCORS is shared by public API and admin API. Admin requests need
@@ -644,6 +657,109 @@ func createFriendPair(ctx context.Context, client *mongo.Client, request friendR
 	return nil
 }
 
+func handleGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		listGroups(w, r, client)
+	case http.MethodPost:
+		createGroup(w, r, client)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func listGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	collection := client.Database(databaseName).Collection(groupsName)
+	cursor, err := collection.Find(
+		r.Context(),
+		bson.M{"member_ids": userID},
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}),
+	)
+	if err != nil {
+		log.Printf("群組清單讀取失敗: %v", err)
+		http.Error(w, "list groups failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(r.Context())
+
+	groups := []groupResponse{}
+	if err := cursor.All(r.Context(), &groups); err != nil {
+		log.Printf("群組清單解析失敗: %v", err)
+		http.Error(w, "decode groups failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(groups); err != nil {
+		log.Printf("群組清單回應 JSON 失敗: %v", err)
+	}
+}
+
+func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	var req createGroupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	req.UserID = strings.TrimSpace(req.UserID)
+	req.Name = strings.TrimSpace(req.Name)
+	memberIDs := uniqueNonEmptyStrings(append(req.MemberIDs, req.UserID))
+	if req.UserID == "" || req.Name == "" || len([]rune(req.Name)) > 32 || len(memberIDs) < 2 {
+		http.Error(w, "user_id, name, and at least one member are required", http.StatusBadRequest)
+		return
+	}
+
+	usersCount, err := client.Database(databaseName).Collection(usersName).CountDocuments(
+		r.Context(),
+		bson.M{"user_id": bson.M{"$in": memberIDs}},
+	)
+	if err != nil {
+		log.Printf("群組成員檢查失敗: %v", err)
+		http.Error(w, "check group members failed", http.StatusInternalServerError)
+		return
+	}
+	if usersCount != int64(len(memberIDs)) {
+		http.Error(w, "group member not found", http.StatusNotFound)
+		return
+	}
+
+	now := time.Now()
+	groupID := fmt.Sprintf("grp_%d", now.UnixNano())
+	group := groupResponse{
+		GroupID:        groupID,
+		Name:           req.Name,
+		MemberIDs:      memberIDs,
+		ConversationID: groupConversationID(groupID, memberIDs),
+		CreatedBy:      req.UserID,
+		CreatedAt:      now,
+	}
+
+	if _, err := client.Database(databaseName).Collection(groupsName).InsertOne(r.Context(), group); err != nil {
+		log.Printf("群組寫入 MongoDB 失敗: %v", err)
+		http.Error(w, "create group failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(group); err != nil {
+		log.Printf("群組建立回應 JSON 失敗: %v", err)
+	}
+}
+
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
 func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub) {
@@ -691,7 +807,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		if eventType, _ := msg["type"].(string); eventType == "active_conversation" {
 			nextConversationID, _ := msg["conversation_id"].(string)
 			nextConversationID = strings.TrimSpace(nextConversationID)
-			if nextConversationID != "" && conversationIncludesUser(nextConversationID, userID) {
+			if nextConversationID != "" && conversationIncludesUser(ctx, client, nextConversationID, userID) {
 				wsClient.setActiveConversation(nextConversationID)
 				markConversationRead(ctx, client, userID, nextConversationID)
 			}
@@ -707,8 +823,24 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 		msg["time"] = time.Now()
 		msg["sender_id"] = userID
-		msg["conversation_id"] = conversationIDFor(userID, recipientID)
 		msg["read_at"] = nil
+
+		clientConversationID, _ := msg["conversation_id"].(string)
+		clientConversationID = strings.TrimSpace(clientConversationID)
+		if strings.HasPrefix(clientConversationID, "group:") {
+			group, err := lookupGroupByConversation(ctx, client, clientConversationID)
+			if err != nil || !stringSliceContains(group.MemberIDs, userID) {
+				log.Printf("略過未授權群組訊息: user_id=%s conversation_id=%s", userID, clientConversationID)
+				continue
+			}
+			msg["recipient_id"] = group.GroupID
+			msg["conversation_id"] = group.ConversationID
+			msg["participant_ids"] = group.MemberIDs
+			msg["read_by"] = []string{userID}
+			delete(msg, "read_at")
+		} else {
+			msg["conversation_id"] = conversationIDFor(userID, recipientID)
+		}
 
 		result, err := collection.InsertOne(ctx, msg)
 		if err != nil {
@@ -761,7 +893,7 @@ func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client
 		return
 	}
 
-	if !conversationIncludesUser(conversationID, userID) {
+	if !conversationIncludesUser(r.Context(), client, conversationID, userID) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -819,6 +951,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		bson.M{"$or": bson.A{
 			bson.M{"sender_id": userID},
 			bson.M{"recipient_id": userID},
+			bson.M{"participant_ids": userID},
 		}},
 		options.Find().SetSort(bson.D{{Key: "time", Value: -1}}).SetLimit(500),
 	)
@@ -856,7 +989,17 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		}
 
 		displayName, isFriend := friendNames[otherID]
-		if displayName == "" {
+		isGroup := strings.HasPrefix(conversationID, "group:")
+		memberIDs := []string{}
+		if isGroup {
+			group, err := lookupGroupByConversation(r.Context(), client, conversationID)
+			if err != nil {
+				continue
+			}
+			otherID = group.GroupID
+			displayName = group.Name
+			memberIDs = group.MemberIDs
+		} else if displayName == "" {
 			displayName = lookupDisplayName(r.Context(), client, otherID)
 		}
 
@@ -869,6 +1012,8 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 			LastMessageSenderID: senderID,
 			LastMessageReadAt:   messageTimePtr(message["read_at"]),
 			IsFriend:            isFriend,
+			IsGroup:             isGroup,
+			MemberIDs:           memberIDs,
 			UnreadCount:         countUnreadMessages(r.Context(), client, userID, conversationID),
 		})
 		seen[conversationID] = true
@@ -940,6 +1085,63 @@ func lookupDisplayName(ctx context.Context, client *mongo.Client, userID string)
 	return user.DisplayName
 }
 
+func lookupGroupByConversation(ctx context.Context, client *mongo.Client, conversationID string) (groupResponse, error) {
+	var group groupResponse
+	err := client.Database(databaseName).Collection(groupsName).
+		FindOne(ctx, bson.M{"conversation_id": conversationID}).
+		Decode(&group)
+	return group, err
+}
+
+func bsonStringSlice(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		return typed
+	case bson.A:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				values = append(values, text)
+			}
+		}
+		return values
+	case []interface{}:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				values = append(values, text)
+			}
+		}
+		return values
+	default:
+		return nil
+	}
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := []string{}
+	for _, value := range values {
+		normalized := strings.TrimSpace(value)
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		seen[normalized] = true
+		result = append(result, normalized)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func messageTime(value interface{}) time.Time {
 	switch typed := value.(type) {
 	case time.Time:
@@ -961,11 +1163,20 @@ func messageTimePtr(value interface{}) *time.Time {
 }
 
 func countUnreadMessages(ctx context.Context, client *mongo.Client, userID string, conversationID string) int64 {
-	count, err := client.Database(databaseName).Collection(collectionName).CountDocuments(ctx, bson.M{
+	filter := bson.M{
 		"conversation_id": conversationID,
 		"recipient_id":    userID,
 		"read_at":         nil,
-	})
+	}
+	if strings.HasPrefix(conversationID, "group:") {
+		filter = bson.M{
+			"conversation_id": conversationID,
+			"participant_ids": userID,
+			"sender_id":       bson.M{"$ne": userID},
+			"read_by":         bson.M{"$ne": userID},
+		}
+	}
+	count, err := client.Database(databaseName).Collection(collectionName).CountDocuments(ctx, filter)
 	if err != nil {
 		log.Printf("未讀訊息計算失敗: %v", err)
 		return 0
@@ -974,7 +1185,12 @@ func countUnreadMessages(ctx context.Context, client *mongo.Client, userID strin
 	return count
 }
 
-func conversationIncludesUser(conversationID string, userID string) bool {
+func conversationIncludesUser(ctx context.Context, client *mongo.Client, conversationID string, userID string) bool {
+	if strings.HasPrefix(conversationID, "group:") {
+		group, err := lookupGroupByConversation(ctx, client, conversationID)
+		return err == nil && stringSliceContains(group.MemberIDs, userID)
+	}
+
 	for _, part := range strings.Split(conversationID, ":") {
 		if part == userID {
 			return true
@@ -986,6 +1202,23 @@ func conversationIncludesUser(conversationID string, userID string) bool {
 
 func markConversationRead(ctx context.Context, client *mongo.Client, userID string, conversationID string) {
 	collection := client.Database(databaseName).Collection(collectionName)
+	if strings.HasPrefix(conversationID, "group:") {
+		_, err := collection.UpdateMany(
+			ctx,
+			bson.M{
+				"conversation_id": conversationID,
+				"participant_ids": userID,
+				"sender_id":       bson.M{"$ne": userID},
+				"read_by":         bson.M{"$ne": userID},
+			},
+			bson.M{"$addToSet": bson.M{"read_by": userID}},
+		)
+		if err != nil {
+			log.Printf("群組標記已讀失敗: %v", err)
+		}
+		return
+	}
+
 	_, err := collection.UpdateMany(
 		ctx,
 		bson.M{
@@ -1008,6 +1241,8 @@ func websocketEventType(collection string) string {
 		return "friend_request"
 	case friendsName:
 		return "friend_added"
+	case groupsName:
+		return "group_added"
 	default:
 		return ""
 	}
@@ -1066,6 +1301,9 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/friend-requests", func(w http.ResponseWriter, r *http.Request) {
 		handleFriendRequests(w, r, client)
+	})
+	mux.HandleFunc("/groups", func(w http.ResponseWriter, r *http.Request) {
+		handleGroups(w, r, client)
 	})
 	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
 		handleMessages(w, r, client)

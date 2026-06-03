@@ -1,6 +1,9 @@
 package chat
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestConversationIDForSortsParticipants(t *testing.T) {
 	got := conversationIDFor("user_b", "user_a")
@@ -21,10 +24,10 @@ func TestConversationIDForTrimsParticipants(t *testing.T) {
 }
 
 func TestConversationIncludesUser(t *testing.T) {
-	if !conversationIncludesUser("dm:user_a:user_b", "user_a") {
+	if !conversationIncludesUser(context.Background(), nil, "dm:user_a:user_b", "user_a") {
 		t.Fatal("expected conversation to include user_a")
 	}
-	if conversationIncludesUser("dm:user_a:user_b", "user_c") {
+	if conversationIncludesUser(context.Background(), nil, "dm:user_a:user_b", "user_c") {
 		t.Fatal("did not expect conversation to include user_c")
 	}
 }

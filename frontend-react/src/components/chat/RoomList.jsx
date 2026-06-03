@@ -41,15 +41,19 @@ export default function RoomList({
   onSelect,
   onStartChat,
   onAddFriend,
+  onCreateGroup,
   onRefreshFriends,
   onLogout,
 }) {
   const { i18n, t } = useTranslation()
   const [friendName, setFriendName] = useState('')
+  const [groupName, setGroupName] = useState('')
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState([])
   const [searchText, setSearchText] = useState('')
   const [contactSearchText, setContactSearchText] = useState('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isAddFriendModalOpen, setIsAddFriendModalOpen] = useState(false)
+  const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
   const [drawerView, setDrawerView] = useState('menu')
   const normalizedSearch = searchText.trim().toLowerCase()
   const normalizedContactSearch = contactSearchText.trim().toLowerCase()
@@ -115,6 +119,26 @@ export default function RoomList({
     setFriendName('')
   }
 
+  const toggleGroupMember = (memberId) => {
+    setSelectedGroupMemberIds((currentIds) =>
+      currentIds.includes(memberId)
+        ? currentIds.filter((id) => id !== memberId)
+        : [...currentIds, memberId],
+    )
+  }
+
+  const submitGroup = (event) => {
+    event.preventDefault()
+    const name = groupName.trim()
+    if (!name || !selectedGroupMemberIds.length) return
+
+    onCreateGroup({ name, memberIds: selectedGroupMemberIds })
+    setGroupName('')
+    setSelectedGroupMemberIds([])
+    setIsCreateGroupModalOpen(false)
+    closeDrawer()
+  }
+
   return (
     <aside className="room-sidebar" aria-label={t('chat.roomListLabel')}>
       {isMenuOpen ? (
@@ -139,6 +163,11 @@ export default function RoomList({
               <button type="button" className="drawer-menu-item" onClick={openContacts}>
                 <span className="drawer-menu-icon">◎</span>
                 <span>{t('chat.contacts')}</span>
+              </button>
+
+              <button type="button" className="drawer-menu-item" onClick={() => setIsCreateGroupModalOpen(true)}>
+                <span className="drawer-menu-icon">#</span>
+                <span>{t('chat.createGroup')}</span>
               </button>
 
               <button type="button" className="drawer-menu-item" onClick={onLogout}>
@@ -257,6 +286,61 @@ export default function RoomList({
             {error ? <p className="room-error">{error}</p> : null}
             <button type="submit" disabled={!friendName.trim()}>
               {t('chat.add')}
+            </button>
+          </form>
+        </div>
+      ) : null}
+
+      {isCreateGroupModalOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setIsCreateGroupModalOpen(false)
+          }}
+        >
+          <form className="add-contact-modal group-modal" onSubmit={submitGroup}>
+            <div className="modal-header">
+              <h3>{t('chat.createGroup')}</h3>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label={t('chat.createGroupClose')}
+                onClick={() => setIsCreateGroupModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <label>
+              <span>{t('chat.groupName')}</span>
+              <input
+                value={groupName}
+                type="text"
+                maxLength="32"
+                placeholder={t('chat.groupNamePlaceholder')}
+                autoComplete="off"
+                onChange={(event) => setGroupName(event.target.value)}
+              />
+            </label>
+
+            <div className="group-member-picker" aria-label={t('chat.groupMembers')}>
+              {friendRooms.map((friend) => (
+                <label key={friend.id} className="group-member-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroupMemberIds.includes(friend.recipientId)}
+                    onChange={() => toggleGroupMember(friend.recipientId)}
+                  />
+                  <span className="room-avatar">{friend.initials}</span>
+                  <span>{friend.name}</span>
+                </label>
+              ))}
+              {!friendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
+            </div>
+
+            {error ? <p className="room-error">{error}</p> : null}
+            <button type="submit" disabled={!groupName.trim() || !selectedGroupMemberIds.length}>
+              {t('chat.createGroupSubmit')}
             </button>
           </form>
         </div>

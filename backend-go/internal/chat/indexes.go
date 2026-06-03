@@ -23,8 +23,30 @@ func ensureIndexes(ctx context.Context, client *mongo.Client) error {
 	if _, err := db.Collection(friendRequestsName).Indexes().CreateMany(ctx, friendRequestIndexes()); err != nil {
 		return err
 	}
+	if _, err := db.Collection(groupsName).Indexes().CreateMany(ctx, groupIndexes()); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func groupIndexes() []mongo.IndexModel {
+	return []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "group_id", Value: 1}},
+			Options: options.Index().
+				SetName("group_id_unique").
+				SetUnique(true),
+		},
+		{
+			Keys:    bson.D{{Key: "member_ids", Value: 1}},
+			Options: options.Index().SetName("member_ids"),
+		},
+		{
+			Keys:    bson.D{{Key: "conversation_id", Value: 1}},
+			Options: options.Index().SetName("conversation_id"),
+		},
+	}
 }
 
 // messageIndexes match the read paths used by chat history, conversation list,
