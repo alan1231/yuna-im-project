@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -20,6 +21,28 @@ import (
 )
 
 const stockBotName = "行情小幫手"
+
+const (
+	stockBotRequestTimeout = 12 * time.Second
+	stockSourceTimeout     = 3 * time.Second
+	stockDividendTimeout   = 1200 * time.Millisecond
+	stockCacheTTL          = 90 * time.Second
+	stockErrorCacheTTL     = 10 * time.Second
+)
+
+var stockHTTPClient = &http.Client{Timeout: 4 * time.Second}
+
+type stockCacheEntry struct {
+	data      stockData
+	expiresAt time.Time
+}
+
+var stockCache = struct {
+	sync.Mutex
+	entries map[string]stockCacheEntry
+}{
+	entries: map[string]stockCacheEntry{},
+}
 
 type yahooChartResponse struct {
 	Chart struct {
@@ -76,7 +99,7 @@ type stockData struct {
 }
 
 func processStockBotMessage(ctx context.Context, client *mongo.Client, message bson.M, messageID interface{}) {
-	botCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	botCtx, cancel := context.WithTimeout(ctx, stockBotRequestTimeout)
 	defer cancel()
 
 	replyText := buildStockReply(botCtx, stringValue(message["text"]))
@@ -167,22 +190,81 @@ func normalizeStockSymbol(rawSymbol string) string {
 }
 
 func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
-	stock, err := fetchYahooStockData(ctx, symbol)
-	if err == nil && stock.Status == "ok" {
+	if stock, ok := getCachedStockData(symbol); ok {
 		return stock, nil
 	}
 
-	fallback, fallbackErr := fetchFallbackStockData(ctx, symbol)
-	if fallbackErr == nil && fallback.Status == "ok" {
-		return fallback, nil
+	stock, err := fetchFastStockData(ctx, symbol)
+	if err == nil && stock.Status == "ok" {
+		if yahooStock, yahooErr := fetchYahooStockDataWithTimeout(ctx, symbol, stockDividendTimeout); yahooErr == nil && yahooStock.Status == "ok" {
+			stock.Dividends = yahooStock.Dividends
+		}
+		setCachedStockData(symbol, stock)
+		return stock, nil
 	}
+
+	yahooStock, yahooErr := fetchYahooStockDataWithTimeout(ctx, symbol, stockSourceTimeout)
+	if yahooErr == nil && yahooStock.Status == "ok" {
+		setCachedStockData(symbol, yahooStock)
+		return yahooStock, nil
+	}
+
 	if err != nil {
 		return stockData{}, err
 	}
-	if fallbackErr != nil {
-		log.Printf("股票 fallback 查詢失敗: symbol=%s err=%v", symbol, fallbackErr)
+	if yahooErr != nil {
+		log.Printf("Yahoo 股票查詢失敗: symbol=%s err=%v", symbol, yahooErr)
+	}
+	if stock.Status != "" {
+		setCachedStockData(symbol, stock)
 	}
 	return stock, nil
+}
+
+func fetchFastStockData(ctx context.Context, symbol string) (stockData, error) {
+	sourceCtx, cancel := context.WithTimeout(ctx, stockSourceTimeout)
+	defer cancel()
+
+	if regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol) {
+		return fetchFallbackStockData(sourceCtx, symbol)
+	}
+	return fetchStooqStockData(sourceCtx, symbol)
+}
+
+func fetchYahooStockDataWithTimeout(ctx context.Context, symbol string, timeout time.Duration) (stockData, error) {
+	sourceCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return fetchYahooStockData(sourceCtx, symbol)
+}
+
+func getCachedStockData(symbol string) (stockData, bool) {
+	stockCache.Lock()
+	defer stockCache.Unlock()
+
+	entry, ok := stockCache.entries[symbol]
+	if !ok {
+		return stockData{}, false
+	}
+	if time.Now().After(entry.expiresAt) {
+		delete(stockCache.entries, symbol)
+		return stockData{}, false
+	}
+	return entry.data, true
+}
+
+func setCachedStockData(symbol string, stock stockData) {
+	ttl := stockCacheTTL
+	if stock.Status != "ok" {
+		ttl = stockErrorCacheTTL
+	}
+
+	stockCache.Lock()
+	defer stockCache.Unlock()
+
+	stockCache.entries[symbol] = stockCacheEntry{
+		data:      stock,
+		expiresAt: time.Now().Add(ttl),
+	}
 }
 
 func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) {
@@ -198,7 +280,7 @@ func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) 
 	}
 	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := stockHTTPClient.Do(req)
 	if err != nil {
 		return stockData{}, err
 	}
@@ -295,7 +377,7 @@ func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
 	}
 	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := stockHTTPClient.Do(req)
 	if err != nil {
 		return stockData{}, err
 	}
@@ -348,7 +430,7 @@ func fetchTWSEStockDayData(ctx context.Context, symbol string) (stockData, error
 	}
 	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := stockHTTPClient.Do(req)
 	if err != nil {
 		return stockData{}, err
 	}
@@ -411,7 +493,7 @@ func fetchStooqStockData(ctx context.Context, symbol string) (stockData, error) 
 	}
 	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := stockHTTPClient.Do(req)
 	if err != nil {
 		return stockData{}, err
 	}
