@@ -6,6 +6,15 @@ const resources = {
     translation: {
       account: {
         eyebrow: 'Account',
+        brandName: 'Yuna IM',
+        brandCopy: '把聊天、好友與行情查詢放在同一個乾淨入口。',
+        featuresLabel: '產品重點',
+        features: {
+          chat: '即時聊天',
+          market: '行情小幫手',
+          realtime: '在線狀態',
+        },
+        panelKicker: '開始使用',
         title: {
           login: '登入帳號',
           create: '建立你的帳號',
@@ -149,6 +158,15 @@ const resources = {
     translation: {
       account: {
         eyebrow: 'Account',
+        brandName: 'Yuna IM',
+        brandCopy: 'A clean entry for chat, friends, and market lookup.',
+        featuresLabel: 'Product highlights',
+        features: {
+          chat: 'Real-time chat',
+          market: 'Market Helper',
+          realtime: 'Presence',
+        },
+        panelKicker: 'Get started',
         title: {
           login: 'Sign in',
           create: 'Create your account',

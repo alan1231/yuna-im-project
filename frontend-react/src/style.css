@@ -52,6 +52,10 @@ button {
   overflow: hidden;
 }
 
+.app-shell {
+  min-height: 100svh;
+}
+
 .language-switcher {
   position: fixed;
   top: 14px;
@@ -87,27 +91,100 @@ button {
   min-height: 100svh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 72px 24px 24px;
+  background:
+    linear-gradient(120deg, rgba(15, 118, 110, 0.08), rgba(47, 95, 141, 0.08)),
+    var(--bg);
 }
 
-.account-panel {
-  width: min(420px, 100%);
-  padding: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  background: var(--surface);
+.account-entry {
+  width: min(940px, 100%);
+  min-height: min(580px, calc(100svh - 120px));
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: var(--shadow);
 }
 
-.account-panel h1 {
-  font-size: 30px;
+.account-brand {
+  min-width: 0;
+  padding: 42px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 18px;
+  color: #ffffff;
+  background:
+    linear-gradient(rgba(16, 42, 67, 0.78), rgba(16, 42, 67, 0.92)),
+    url('./assets/hero.png') center / cover;
+}
+
+.account-brand .eyebrow {
+  color: #9edbd5;
+}
+
+.account-brand h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1;
+}
+
+.account-brand p {
+  max-width: 430px;
+  margin: 0;
+  color: #d5e3f3;
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.account-feature-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-feature-list span {
+  padding: 7px 10px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.account-panel {
+  min-width: 0;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  background: var(--surface);
+}
+
+.account-panel-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.account-panel-heading span {
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.account-panel h2 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.15;
 }
 
 .account-copy {
-  margin: -8px 0 2px;
+  margin: 0;
   color: var(--muted);
   line-height: 1.6;
 }
@@ -160,26 +237,26 @@ button {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
 }
 
-.account-error {
+.account-message {
   margin: 0;
-  padding: 10px 12px;
-  color: var(--danger);
-  background: var(--danger-bg);
-  border: 1px solid #ffd1cc;
-  border-radius: 8px;
-}
-
-.account-wake-hint {
-  margin: 0;
-  padding: 10px 12px;
-  color: #41546d;
-  background: #edf6ff;
-  border: 1px solid #cfe6ff;
+  padding: 11px 12px;
   border-radius: 8px;
   line-height: 1.5;
 }
 
-.account-panel button {
+.account-message-error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid #ffd1cc;
+}
+
+.account-message-info {
+  color: #41546d;
+  background: #edf6ff;
+  border: 1px solid #cfe6ff;
+}
+
+.account-submit {
   min-height: 46px;
   color: #ffffff;
   background: var(--accent);
@@ -188,7 +265,7 @@ button {
   cursor: pointer;
 }
 
-.account-panel button:disabled {
+.account-submit:disabled {
   color: #8b95a1;
   background: #e5e9ef;
   cursor: not-allowed;
@@ -1818,6 +1895,15 @@ h1 {
 }
 
 @media (max-width: 1024px) {
+  .account-entry {
+    grid-template-columns: 1fr;
+  }
+
+  .account-brand {
+    min-height: 280px;
+    justify-content: flex-end;
+  }
+
   .admin-stat-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1833,6 +1919,42 @@ h1 {
 }
 
 @media (max-width: 768px) {
+  .language-switcher {
+    top: 10px;
+    right: 10px;
+  }
+
+  .account-screen {
+    min-height: 100svh;
+    padding: 58px 12px 12px;
+    place-items: stretch;
+  }
+
+  .account-entry {
+    min-height: calc(100svh - 70px);
+  }
+
+  .account-brand {
+    min-height: 230px;
+    padding: 24px;
+  }
+
+  .account-brand h1 {
+    font-size: 40px;
+  }
+
+  .account-brand p {
+    font-size: 16px;
+  }
+
+  .account-panel {
+    padding: 24px;
+  }
+
+  .account-panel h2 {
+    font-size: 28px;
+  }
+
   .chat-shell {
     width: 100%;
     height: 100svh;

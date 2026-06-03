@@ -26,14 +26,14 @@ const createLocalUserId = () => {
 
 export default function App() {
   return (
-    <>
+    <div className="app-shell">
       <LanguageSwitcher />
       <Routes>
         <Route path="/" element={<ChatRoute />} />
         <Route path="/admin" element={<AdminConsole />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </div>
   )
 }
 
