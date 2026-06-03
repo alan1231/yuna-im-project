@@ -209,16 +209,24 @@ func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
 		return yahooStock, nil
 	}
 
-	if err != nil {
-		return stockData{}, err
-	}
 	if yahooErr != nil {
 		log.Printf("Yahoo 股票查詢失敗: symbol=%s err=%v", symbol, yahooErr)
 	}
+	if err != nil {
+		log.Printf("快速股票查詢失敗: symbol=%s err=%v", symbol, err)
+	}
 	if stock.Status != "" {
 		setCachedStockData(symbol, stock)
+		return stock, nil
 	}
-	return stock, nil
+	if yahooStock.Status != "" {
+		setCachedStockData(symbol, yahooStock)
+		return yahooStock, nil
+	}
+	if err != nil {
+		return stockData{}, err
+	}
+	return stockData{Status: "error", Symbol: symbol}, nil
 }
 
 func fetchFastStockData(ctx context.Context, symbol string) (stockData, error) {
@@ -365,8 +373,21 @@ func fetchFallbackStockData(ctx context.Context, symbol string) (stockData, erro
 
 func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
 	ticker := strings.TrimSuffix(symbol, ".TW")
+	for _, market := range []string{"tse", "otc"} {
+		stock, err := fetchTWSEStockInfoForMarket(ctx, symbol, ticker, market)
+		if err != nil {
+			return stockData{}, err
+		}
+		if stock.Status == "ok" {
+			return stock, nil
+		}
+	}
+	return stockData{Status: "not_found", Symbol: symbol}, nil
+}
+
+func fetchTWSEStockInfoForMarket(ctx context.Context, symbol string, ticker string, market string) (stockData, error) {
 	query := url.Values{}
-	query.Set("ex_ch", fmt.Sprintf("tse_%s.tw", ticker))
+	query.Set("ex_ch", fmt.Sprintf("%s_%s.tw", market, ticker))
 	query.Set("json", "1")
 	query.Set("delay", "0")
 
@@ -384,7 +405,7 @@ func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		log.Printf("TWSE 即時查詢 HTTP 狀態異常: symbol=%s status=%d", symbol, resp.StatusCode)
+		log.Printf("TWSE 即時查詢 HTTP 狀態異常: symbol=%s market=%s status=%d", symbol, market, resp.StatusCode)
 		return stockData{Status: "error", Symbol: symbol}, nil
 	}
 
