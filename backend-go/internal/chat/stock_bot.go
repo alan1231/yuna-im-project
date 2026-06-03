@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +45,16 @@ type yahooChartResponse struct {
 		} `json:"result"`
 		Error interface{} `json:"error"`
 	} `json:"chart"`
+}
+
+type twseStockInfoResponse struct {
+	MessageArray []struct {
+		Code          string `json:"c"`
+		Name          string `json:"n"`
+		Price         string `json:"z"`
+		PreviousClose string `json:"y"`
+	} `json:"msgArray"`
+	ResponseCode string `json:"rtcode"`
 }
 
 type stockDividend struct {
@@ -150,6 +162,25 @@ func normalizeStockSymbol(rawSymbol string) string {
 }
 
 func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
+	stock, err := fetchYahooStockData(ctx, symbol)
+	if err == nil && stock.Status == "ok" {
+		return stock, nil
+	}
+
+	fallback, fallbackErr := fetchFallbackStockData(ctx, symbol)
+	if fallbackErr == nil && fallback.Status == "ok" {
+		return fallback, nil
+	}
+	if err != nil {
+		return stockData{}, err
+	}
+	if fallbackErr != nil {
+		log.Printf("股票 fallback 查詢失敗: symbol=%s err=%v", symbol, fallbackErr)
+	}
+	return stock, nil
+}
+
+func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) {
 	query := url.Values{}
 	query.Set("range", "1y")
 	query.Set("interval", "1d")
@@ -169,6 +200,9 @@ func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden {
+			return stockData{Status: "error", Symbol: symbol}, nil
+		}
 		return stockData{Status: "not_found", Symbol: symbol}, nil
 	}
 
@@ -223,6 +257,133 @@ func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
 		ChangePct: round(changePct, 2),
 		Dividends: dividends,
 	}, nil
+}
+
+func fetchFallbackStockData(ctx context.Context, symbol string) (stockData, error) {
+	if regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol) {
+		return fetchTWSEStockData(ctx, symbol)
+	}
+	return fetchStooqStockData(ctx, symbol)
+}
+
+func fetchTWSEStockData(ctx context.Context, symbol string) (stockData, error) {
+	ticker := strings.TrimSuffix(symbol, ".TW")
+	query := url.Values{}
+	query.Set("ex_ch", fmt.Sprintf("tse_%s.tw", ticker))
+	query.Set("json", "1")
+	query.Set("delay", "0")
+
+	endpoint := fmt.Sprintf("https://mis.twse.com.tw/stock/api/getStockInfo.jsp?%s", query.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return stockData{}, err
+	}
+	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return stockData{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return stockData{Status: "error", Symbol: symbol}, nil
+	}
+
+	var payload twseStockInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return stockData{}, err
+	}
+	if payload.ResponseCode != "0000" || len(payload.MessageArray) == 0 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	row := payload.MessageArray[0]
+	price := parseMarketNumber(row.Price)
+	previousClose := parseMarketNumber(row.PreviousClose)
+	if price == 0 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	changePct := 0.0
+	if previousClose != 0 {
+		changePct = ((price - previousClose) / previousClose) * 100
+	}
+
+	return stockData{
+		Status:    "ok",
+		Symbol:    symbol,
+		Price:     round(price, 2),
+		ChangePct: round(changePct, 2),
+	}, nil
+}
+
+func fetchStooqStockData(ctx context.Context, symbol string) (stockData, error) {
+	stooqSymbol := strings.ToLower(symbol)
+	if !strings.Contains(stooqSymbol, ".") {
+		stooqSymbol += ".us"
+	}
+
+	query := url.Values{}
+	query.Set("s", stooqSymbol)
+	query.Set("f", "sd2t2ohlcv")
+	query.Set("h", "")
+	query.Set("e", "csv")
+
+	endpoint := fmt.Sprintf("https://stooq.com/q/l/?%s", query.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return stockData{}, err
+	}
+	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return stockData{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return stockData{Status: "error", Symbol: symbol}, nil
+	}
+
+	records, err := csv.NewReader(resp.Body).ReadAll()
+	if err != nil {
+		return stockData{}, err
+	}
+	if len(records) < 2 || len(records[1]) < 7 || records[1][1] == "N/D" {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	open := parseMarketNumber(records[1][3])
+	closePrice := parseMarketNumber(records[1][6])
+	if closePrice == 0 {
+		return stockData{Status: "not_found", Symbol: symbol}, nil
+	}
+
+	changePct := 0.0
+	if open != 0 {
+		changePct = ((closePrice - open) / open) * 100
+	}
+
+	return stockData{
+		Status:    "ok",
+		Symbol:    symbol,
+		Price:     round(closePrice, 2),
+		ChangePct: round(changePct, 2),
+	}, nil
+}
+
+func parseMarketNumber(value string) float64 {
+	normalized := strings.ReplaceAll(strings.TrimSpace(value), ",", "")
+	if normalized == "" || normalized == "-" || normalized == "N/D" {
+		return 0
+	}
+	number, err := strconv.ParseFloat(normalized, 64)
+	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
+		return 0
+	}
+	return number
 }
 
 func firstFinite(values ...*float64) float64 {

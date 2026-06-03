@@ -38,3 +38,21 @@ func TestNormalizeStockSymbol(t *testing.T) {
 		t.Fatalf("normalizeStockSymbol($TSM) = %q", got)
 	}
 }
+
+func TestParseMarketNumber(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+	}{
+		{input: "2,425.0000", want: 2425},
+		{input: "222.8", want: 222.8},
+		{input: "N/D", want: 0},
+		{input: "-", want: 0},
+	}
+
+	for _, tt := range tests {
+		if got := parseMarketNumber(tt.input); got != tt.want {
+			t.Fatalf("parseMarketNumber(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
