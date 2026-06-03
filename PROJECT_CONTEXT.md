@@ -2,24 +2,23 @@
 
 ## Goal
 
-Yuna IM is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a Python stock bot.
+Yuna IM is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a built-in Go stock bot.
 
 The current priority is a stable local/demo-grade IM experience with clear paths toward production hardening.
 
 ## Architecture
 
 - `frontend-react`: React app for account setup, chat, friend management, and the admin console.
-- `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, and admin endpoints.
-- `backend-python`: Stock bot that watches MongoDB `messages` and writes bot replies back into the same collection.
+- `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, admin endpoints, and the stock bot.
+- `backend-python`: Legacy Python stock bot kept for reference; production stock bot behavior now lives in Go.
 - MongoDB: Durable storage for users, messages, friends, and friend requests.
 - Redis: Short-lived online presence and WebSocket connection counts.
 
 ## Runtime Assumptions
 
-- MongoDB must run as a replica set because Go and Python both depend on Change Streams.
+- MongoDB must run as a replica set because Go depends on Change Streams.
 - Go backend defaults to `:8080`.
 - React uses Vite for local development.
-- Python bot communicates indirectly through MongoDB, not through HTTP or WebSocket.
 - Local development starts all app processes with `./scripts/dev.sh`; MongoDB and Redis still need to be running.
 
 ## Important Data Flows
@@ -27,7 +26,7 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 - User sends message in React through WebSocket.
 - Go trusts the WebSocket `user_id` query parameter as sender identity for now, recomputes `conversation_id`, and writes the message to MongoDB.
 - Go shared Change Stream hub watches MongoDB once per backend process and fans events out to matching WebSocket clients.
-- Python stock bot watches messages sent to `stock_bot`, queries stock data, and inserts a bot reply into MongoDB.
+- Go handles messages sent to `stock_bot`, queries Yahoo Finance chart data, and inserts a bot reply into MongoDB.
 - React keeps bounded in-memory message caches and reloads persisted history from `/messages` when needed.
 
 ## Current Priorities

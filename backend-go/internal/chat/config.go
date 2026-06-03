@@ -14,32 +14,30 @@ const (
 )
 
 type Config struct {
-	MongoURI          string
-	RedisAddr         string
-	RedisUsername     string
-	RedisPassword     string
-	RedisTLS          bool
-	DatabaseName      string
-	ServerAddr        string
-	AllowedOrigins    string
-	AdminToken        string
-	StockBotHealthURL string
+	MongoURI       string
+	RedisAddr      string
+	RedisUsername  string
+	RedisPassword  string
+	RedisTLS       bool
+	DatabaseName   string
+	ServerAddr     string
+	AllowedOrigins string
+	AdminToken     string
 }
 
 // LoadConfig centralizes runtime settings so local development, Docker, and
 // deployment environments do not require code changes.
 func LoadConfig() Config {
 	return Config{
-		MongoURI:          envOrDefault("MONGO_URI", defaultMongoURI),
-		RedisAddr:         envOrDefault("REDIS_ADDR", defaultRedisAddr),
-		RedisUsername:     strings.TrimSpace(os.Getenv("REDIS_USERNAME")),
-		RedisPassword:     strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
-		RedisTLS:          parseBool(os.Getenv("REDIS_TLS")),
-		DatabaseName:      envOrDefault("DATABASE_NAME", defaultDatabaseName),
-		ServerAddr:        envOrDefault("SERVER_ADDR", defaultServerAddr),
-		AllowedOrigins:    envOrDefault("ALLOWED_ORIGINS", defaultAllowedOrigins),
-		AdminToken:        strings.TrimSpace(os.Getenv("ADMIN_TOKEN")),
-		StockBotHealthURL: strings.TrimSpace(os.Getenv("STOCK_BOT_HEALTH_URL")),
+		MongoURI:       envOrDefault("MONGO_URI", defaultMongoURI),
+		RedisAddr:      envOrDefault("REDIS_ADDR", defaultRedisAddr),
+		RedisUsername:  strings.TrimSpace(os.Getenv("REDIS_USERNAME")),
+		RedisPassword:  strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
+		RedisTLS:       parseBool(os.Getenv("REDIS_TLS")),
+		DatabaseName:   envOrDefault("DATABASE_NAME", defaultDatabaseName),
+		ServerAddr:     envOrDefault("SERVER_ADDR", defaultServerAddr),
+		AllowedOrigins: envOrDefault("ALLOWED_ORIGINS", defaultAllowedOrigins),
+		AdminToken:     strings.TrimSpace(os.Getenv("ADMIN_TOKEN")),
 	}
 }
 

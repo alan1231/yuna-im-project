@@ -36,7 +36,6 @@ trap cleanup EXIT INT TERM
 
 start_service "go" "$ROOT_DIR/backend-go" go run .
 start_service "react" "$ROOT_DIR/frontend-react" npm run dev -- --host 0.0.0.0
-start_service "python" "$ROOT_DIR/backend-python" ./venv/bin/python dev_agent.py
 
 echo "Dev services started."
 echo "React will print its local and network URLs below. Press Ctrl+C to stop all services."

@@ -31,10 +31,6 @@ const (
 
 var databaseName = defaultDatabaseName
 var allowedOrigins = defaultAllowedOrigins
-var stockBotWakeState = struct {
-	sync.Mutex
-	lastAttempt time.Time
-}{}
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -261,15 +257,13 @@ func isOriginAllowed(origin string) bool {
 	return false
 }
 
-func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client, stockBotHealthURL string) {
+func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	applyCORS(w)
 
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
-	wakeStockBotSoon(stockBotHealthURL)
 
 	switch r.Method {
 	case http.MethodGet:
@@ -652,7 +646,7 @@ func createFriendPair(ctx context.Context, client *mongo.Client, request friendR
 
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
-func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub, stockBotHealthURL string) {
+func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub) {
 	userID := r.URL.Query().Get("user_id")
 	conversationID := r.URL.Query().Get("conversation_id")
 	if userID == "" || conversationID == "" {
@@ -716,60 +710,17 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		msg["conversation_id"] = conversationIDFor(userID, recipientID)
 		msg["read_at"] = nil
 
-		if _, err := collection.InsertOne(ctx, msg); err != nil {
+		result, err := collection.InsertOne(ctx, msg)
+		if err != nil {
 			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
 			return
 		}
 		if recipientID == stockBotID {
-			wakeStockBotSoon(stockBotHealthURL)
+			go processStockBotMessage(context.Background(), client, msg, result.InsertedID)
 		}
 
 		fmt.Printf("收到訊息並存入資料庫: %v\n", msg["text"])
 	}
-}
-
-func wakeStockBot(healthURL string) {
-	if healthURL == "" {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-	if err != nil {
-		log.Printf("股票機器人喚醒 URL 無效: %v", err)
-		return
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Printf("股票機器人喚醒失敗: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		log.Printf("股票機器人喚醒回應異常: status=%d", resp.StatusCode)
-		return
-	}
-	log.Printf("股票機器人喚醒完成")
-}
-
-func wakeStockBotSoon(healthURL string) {
-	if healthURL == "" {
-		return
-	}
-
-	stockBotWakeState.Lock()
-	if time.Since(stockBotWakeState.lastAttempt) < time.Minute {
-		stockBotWakeState.Unlock()
-		return
-	}
-	stockBotWakeState.lastAttempt = time.Now()
-	stockBotWakeState.Unlock()
-
-	go wakeStockBot(healthURL)
 }
 
 func writeWebSocketEvents(ctx context.Context, ws *websocket.Conn, client *wsClient) {
@@ -1105,10 +1056,10 @@ func Run(cfg Config) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(w, r, client, presence, hub, cfg.StockBotHealthURL)
+		handleConnections(w, r, client, presence, hub)
 	})
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
-		handleUsers(w, r, client, cfg.StockBotHealthURL)
+		handleUsers(w, r, client)
 	})
 	mux.HandleFunc("/friends", func(w http.ResponseWriter, r *http.Request) {
 		handleFriends(w, r, client)

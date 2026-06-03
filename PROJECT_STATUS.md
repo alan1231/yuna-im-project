@@ -37,7 +37,7 @@ git push origin main
 - Go API/WebSocket: Render, repo root directory `backend-go`.
 - MongoDB: MongoDB Atlas M0.
 - Redis: Upstash Redis with TLS.
-- Python stock bot: Render-ready from `backend-python`; confirm service is live before relying on bot replies.
+- Stock bot: built into the Go API/WebSocket service.
 
 ## Production URLs
 
@@ -52,7 +52,7 @@ git push origin main
 - Go backend deploys on Render and connects to MongoDB Atlas.
 - Go Redis config supports Upstash TLS through `REDIS_USERNAME` and `REDIS_TLS`.
 - React frontend deploys on Vercel and reads API endpoints from Vite env vars.
-- Python stock bot reads `MONGO_URI` and `DATABASE_NAME`, and exposes `/healthz` for Render.
+- Go stock bot handles `stock_bot` messages directly and writes replies into MongoDB.
 - Stock bot chat now shows a three-dot pending state after sending a query.
 
 ## Follow-Ups
@@ -60,4 +60,4 @@ git push origin main
 - Replace exposed MongoDB database password and update Render `MONGO_URI`.
 - Replace exposed `ADMIN_TOKEN` in the Go Render service.
 - Set Go Render `ALLOWED_ORIGINS` to the actual Vercel frontend URL instead of `*`.
-- Be aware that Render Free services sleep when inactive; this can delay Go API startup and pause the Python stock bot.
+- Be aware that Render Free services sleep when inactive; this can delay Go API startup.

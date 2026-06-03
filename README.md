@@ -1,6 +1,6 @@
 # Yuna IM Project
 
-Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 和 Python 股票機器人組成。
+Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 和內建股票機器人組成。
 
 ## 快速啟動
 
@@ -10,7 +10,7 @@ Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、
 docker compose up -d
 ```
 
-再啟動 Go、React 和 Python 股票機器人：
+再啟動 Go 和 React：
 
 ```bash
 ./scripts/dev.sh
@@ -27,8 +27,8 @@ docker compose up -d
 
 - `frontend-react`：React 前端，包含帳號建立、聊天、好友、管理台。
 - `mobile-flutter`：Flutter mobile app，使用者端聊天，不包含後台管理。
-- `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態。
-- `backend-python`：股票機器人，監聽 MongoDB 訊息並寫入回覆。
+- `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態、股票機器人。
+- `backend-python`：舊版 Python 股票機器人，已由 Go 內建 stock bot 取代。
 - MongoDB：儲存 users、messages、friends、friend_requests。
 - Redis：儲存短生命週期的在線狀態和連線數。
 
