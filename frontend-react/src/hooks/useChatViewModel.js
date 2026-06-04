@@ -9,6 +9,7 @@ const STOCK_BOT_PENDING_ID = 'stock-bot-pending'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 const MAX_HANDLED_REQUEST_IDS = 100
+const VOICE_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 const getConversationId = (userId, recipientId) => {
   const [firstId, secondId] = [userId, recipientId].sort()
@@ -175,11 +176,22 @@ export const useChatViewModel = (currentUser) => {
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState('')
   const [roomError, setRoomError] = useState('')
+  const [voiceCall, setVoiceCall] = useState({
+    status: 'idle',
+    roomId: '',
+    peerId: '',
+    peerName: '',
+    isMuted: false,
+  })
 
   const roomsRef = useRef(rooms)
   const activeRoomIdRef = useRef(activeRoomId)
   const availableUsersRef = useRef(availableUsers)
   const socketRef = useRef(null)
+  const peerConnectionRef = useRef(null)
+  const localStreamRef = useRef(null)
+  const remoteAudioRef = useRef(null)
+  const pendingOfferRef = useRef(null)
   const handledRequestIdsRef = useRef(new Set())
   const handledGroupIdsRef = useRef(new Set())
   const loadedConversationIdsRef = useRef(new Set())
@@ -484,6 +496,198 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [activateRoom, appendRoom, currentUser.id, t])
 
+  const sendVoiceSignal = useCallback((type, room, payload = {}) => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN || !room?.recipientId || !room?.conversationId) {
+      setConnectionError(t('chat.errors.reconnecting'))
+      return false
+    }
+
+    socket.send(
+      JSON.stringify({
+        type,
+        sender_id: currentUser.id,
+        recipient_id: room.recipientId,
+        conversation_id: room.conversationId,
+        ...payload,
+      }),
+    )
+    return true
+  }, [currentUser.id, t])
+
+  const cleanupVoiceCall = useCallback(() => {
+    peerConnectionRef.current?.close()
+    peerConnectionRef.current = null
+    localStreamRef.current?.getTracks().forEach((track) => track.stop())
+    localStreamRef.current = null
+    pendingOfferRef.current = null
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null
+    }
+  }, [])
+
+  const setRemoteAudioElement = useCallback((element) => {
+    remoteAudioRef.current = element
+  }, [])
+
+  const createPeerConnection = useCallback((room) => {
+    const peer = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS })
+    peer.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendVoiceSignal('voice_ice', room, { candidate: event.candidate.toJSON() })
+      }
+    }
+    peer.ontrack = (event) => {
+      const [stream] = event.streams
+      if (remoteAudioRef.current && stream) {
+        remoteAudioRef.current.srcObject = stream
+        remoteAudioRef.current.play().catch(() => {})
+      }
+    }
+    peer.onconnectionstatechange = () => {
+      if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
+        cleanupVoiceCall()
+        setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
+      }
+    }
+    peerConnectionRef.current = peer
+    return peer
+  }, [cleanupVoiceCall, sendVoiceSignal])
+
+  const ensureLocalAudioStream = useCallback(async () => {
+    if (localStreamRef.current) return localStreamRef.current
+    const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    localStreamRef.current = stream
+    return stream
+  }, [])
+
+  const findRoomForVoiceSignal = useCallback((payload) => {
+    return roomsRef.current.find((room) => {
+      return room.conversationId === payload.conversation_id || room.recipientId === payload.sender_id
+    })
+  }, [])
+
+  const handleVoiceOffer = useCallback((payload) => {
+    const room = findRoomForVoiceSignal(payload)
+    if (!room || room.isGroup || room.id === STOCK_BOT_ID) return
+
+    pendingOfferRef.current = payload
+    setVoiceCall({
+      status: 'incoming',
+      roomId: room.id,
+      peerId: payload.sender_id,
+      peerName: room.name,
+      isMuted: false,
+    })
+  }, [findRoomForVoiceSignal])
+
+  const handleVoiceAnswer = useCallback(async (payload) => {
+    const peer = peerConnectionRef.current
+    if (!peer || !payload.answer) return
+
+    await peer.setRemoteDescription(new RTCSessionDescription(payload.answer))
+    setVoiceCall((current) => ({ ...current, status: 'connected' }))
+  }, [])
+
+  const handleVoiceIce = useCallback(async (payload) => {
+    const peer = peerConnectionRef.current
+    if (!peer || !payload.candidate) return
+
+    try {
+      await peer.addIceCandidate(new RTCIceCandidate(payload.candidate))
+    } catch (error) {
+      console.error('Failed to add voice ICE candidate:', error)
+    }
+  }, [])
+
+  const handleVoiceEnd = useCallback(() => {
+    cleanupVoiceCall()
+    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
+  }, [cleanupVoiceCall])
+
+  const startVoiceCall = useCallback(async () => {
+    const room = getActiveRoom()
+    if (!room || room.id === STOCK_BOT_ID || room.isGroup) return
+
+    try {
+      cleanupVoiceCall()
+      const stream = await ensureLocalAudioStream()
+      const peer = createPeerConnection(room)
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream))
+      const offer = await peer.createOffer()
+      await peer.setLocalDescription(offer)
+      if (!sendVoiceSignal('voice_offer', room, { offer })) return
+
+      setVoiceCall({
+        status: 'calling',
+        roomId: room.id,
+        peerId: room.recipientId,
+        peerName: room.name,
+        isMuted: false,
+      })
+    } catch (error) {
+      console.error('Start voice call failed:', error)
+      cleanupVoiceCall()
+      setRoomError(t('chat.errors.voiceStartFailed'))
+    }
+  }, [cleanupVoiceCall, createPeerConnection, ensureLocalAudioStream, getActiveRoom, sendVoiceSignal, t])
+
+  const acceptVoiceCall = useCallback(async () => {
+    const offer = pendingOfferRef.current
+    const room = offer ? findRoomForVoiceSignal(offer) : null
+    if (!offer || !room) return
+
+    try {
+      cleanupVoiceCall()
+      const stream = await ensureLocalAudioStream()
+      const peer = createPeerConnection(room)
+      stream.getTracks().forEach((track) => peer.addTrack(track, stream))
+      await peer.setRemoteDescription(new RTCSessionDescription(offer.offer))
+      const answer = await peer.createAnswer()
+      await peer.setLocalDescription(answer)
+      sendVoiceSignal('voice_answer', room, { answer })
+      pendingOfferRef.current = null
+      setVoiceCall({
+        status: 'connected',
+        roomId: room.id,
+        peerId: room.recipientId,
+        peerName: room.name,
+        isMuted: false,
+      })
+    } catch (error) {
+      console.error('Accept voice call failed:', error)
+      cleanupVoiceCall()
+      setRoomError(t('chat.errors.voiceStartFailed'))
+    }
+  }, [cleanupVoiceCall, createPeerConnection, ensureLocalAudioStream, findRoomForVoiceSignal, sendVoiceSignal, t])
+
+  const rejectVoiceCall = useCallback(() => {
+    const offer = pendingOfferRef.current
+    const room = offer ? findRoomForVoiceSignal(offer) : null
+    if (room) {
+      sendVoiceSignal('voice_reject', room)
+    }
+    cleanupVoiceCall()
+    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
+  }, [cleanupVoiceCall, findRoomForVoiceSignal, sendVoiceSignal])
+
+  const endVoiceCall = useCallback(() => {
+    const room = roomsRef.current.find((item) => item.id === voiceCall.roomId)
+    if (room) {
+      sendVoiceSignal('voice_end', room)
+    }
+    cleanupVoiceCall()
+    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
+  }, [cleanupVoiceCall, sendVoiceSignal, voiceCall.roomId])
+
+  const toggleVoiceMute = useCallback(() => {
+    const nextMuted = !voiceCall.isMuted
+    localStreamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !nextMuted
+    })
+    setVoiceCall((current) => ({ ...current, isMuted: nextMuted }))
+  }, [voiceCall.isMuted])
+
   const handleWebSocketEvent = useCallback(async (data) => {
     if (!data.type) {
       appendMessage(data)
@@ -506,17 +710,43 @@ export const useChatViewModel = (currentUser) => {
       case 'read_receipt':
         applyReadReceipt(data.payload)
         break
+      case 'voice_offer':
+        handleVoiceOffer(data.payload)
+        break
+      case 'voice_answer':
+        await handleVoiceAnswer(data.payload)
+        break
+      case 'voice_ice':
+        await handleVoiceIce(data.payload)
+        break
+      case 'voice_reject':
+      case 'voice_end':
+        handleVoiceEnd()
+        break
       default:
         console.warn('Unknown WebSocket event:', data)
     }
-  }, [appendMessage, appendRoom, applyReadReceipt, currentUser.id, handleFriendRequest, handleGroupAdded, t])
+  }, [
+    appendMessage,
+    appendRoom,
+    applyReadReceipt,
+    currentUser.id,
+    handleFriendRequest,
+    handleGroupAdded,
+    handleVoiceAnswer,
+    handleVoiceEnd,
+    handleVoiceIce,
+    handleVoiceOffer,
+    t,
+  ])
 
   const disconnect = useCallback(() => {
     if (!socketRef.current) return
 
     socketRef.current.close()
     socketRef.current = null
-  }, [])
+    cleanupVoiceCall()
+  }, [cleanupVoiceCall])
 
   const connect = useCallback(() => {
     const url = new URL(WS_URL)
@@ -984,6 +1214,8 @@ export const useChatViewModel = (currentUser) => {
     roomError,
     canSend,
     isStockBotPending,
+    voiceCall,
+    setRemoteAudioElement,
     selectRoom,
     startChatWithUser,
     addFriend,
@@ -994,5 +1226,10 @@ export const useChatViewModel = (currentUser) => {
     clearFileAttachment,
     refreshFriends: loadFriends,
     sendMessage,
+    startVoiceCall,
+    acceptVoiceCall,
+    rejectVoiceCall,
+    endVoiceCall,
+    toggleVoiceMute,
   }
 }

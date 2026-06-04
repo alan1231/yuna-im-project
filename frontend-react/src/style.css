@@ -982,10 +982,11 @@ button {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     'header'
     'error'
+    'voice'
     'messages'
     'composer';
 }
@@ -1056,6 +1057,25 @@ button {
   border-color: #d92d20;
 }
 
+.voice-call-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: #0f766e;
+  background: #dcf7f1;
+  border: 1px solid #b8eadf;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.voice-call-button:hover {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .chat-back-button {
   display: none;
   width: 38px;
@@ -1116,6 +1136,76 @@ h1 {
   background: var(--danger-bg);
   border-bottom: 1px solid #ffd1cc;
   font-size: 14px;
+}
+
+.voice-call-bar {
+  grid-area: voice;
+  min-height: 56px;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #12312e;
+  background: #e5f7f3;
+  border-bottom: 1px solid #cce7e0;
+}
+
+.connection-error + .voice-call-bar {
+  border-top: 1px solid #cce7e0;
+}
+
+.voice-call-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.voice-call-text span {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.voice-call-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.voice-call-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.voice-call-actions button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.voice-accept-button {
+  color: #ffffff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.voice-secondary-button {
+  color: #0f766e;
+  background: #ffffff;
+  border: 1px solid #b8eadf;
+}
+
+.voice-end-button {
+  color: #ffffff;
+  background: var(--danger);
+  border: 1px solid var(--danger);
 }
 
 .message-list {
@@ -2252,6 +2342,20 @@ h1 {
   .chat-subtitle {
     max-width: calc(100vw - 112px);
     font-size: 13px;
+  }
+
+  .voice-call-bar {
+    padding-inline: 16px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .voice-call-actions {
+    width: 100%;
+  }
+
+  .voice-call-actions button {
+    flex: 1;
   }
 
   .message {

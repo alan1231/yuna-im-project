@@ -5,6 +5,7 @@ import ChatComposer from './ChatComposer.jsx'
 import ChatHeader from './ChatHeader.jsx'
 import MessageList from './MessageList.jsx'
 import RoomList from './RoomList.jsx'
+import VoiceCallBar from './VoiceCallBar.jsx'
 
 export default function ChatWindow({ currentUser, onLogout }) {
   const { t } = useTranslation()
@@ -24,6 +25,8 @@ export default function ChatWindow({ currentUser, onLogout }) {
     roomError,
     canSend,
     isStockBotPending,
+    voiceCall,
+    setRemoteAudioElement,
     selectRoom,
     startChatWithUser,
     addFriend,
@@ -34,6 +37,11 @@ export default function ChatWindow({ currentUser, onLogout }) {
     clearFileAttachment,
     refreshFriends,
     sendMessage,
+    startVoiceCall,
+    acceptVoiceCall,
+    rejectVoiceCall,
+    endVoiceCall,
+    toggleVoiceMute,
   } = useChatViewModel(currentUser)
 
   const openRoom = (roomId) => {
@@ -98,11 +106,22 @@ export default function ChatWindow({ currentUser, onLogout }) {
           isConnected={isConnected}
           room={activeRoom}
           memberNames={activeRoomMemberNames}
+          canStartVoiceCall={activeRoom.id !== 'stock_bot' && !activeRoom.isGroup && voiceCall.status === 'idle'}
           onBack={() => setMobileView('rooms')}
           onLeaveGroup={() => leaveGroup(activeRoom.id)}
+          onStartVoiceCall={startVoiceCall}
         />
 
         {connectionError ? <p className="connection-error">{connectionError}</p> : null}
+
+        <VoiceCallBar
+          voiceCall={voiceCall}
+          onAccept={acceptVoiceCall}
+          onReject={rejectVoiceCall}
+          onEnd={endVoiceCall}
+          onToggleMute={toggleVoiceMute}
+          remoteAudioRef={setRemoteAudioElement}
+        />
 
         <MessageList
           messages={messages}

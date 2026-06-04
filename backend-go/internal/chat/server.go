@@ -208,6 +208,25 @@ func (hub *changeStreamHub) publish(ctx context.Context, event changeStreamEvent
 	}
 }
 
+func (hub *changeStreamHub) sendToUser(userID string, event websocketEvent) bool {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+
+	delivered := false
+	for client := range hub.clients {
+		if client.userID != userID {
+			continue
+		}
+		select {
+		case client.send <- event:
+			delivered = true
+		default:
+			log.Printf("WebSocket client send buffer full: user_id=%s", client.userID)
+		}
+	}
+	return delivered
+}
+
 func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
 	switch event.Namespace.Collection {
 	case collectionName:
@@ -229,6 +248,49 @@ func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
 	default:
 		return false
 	}
+}
+
+func isVoiceSignalType(eventType string) bool {
+	switch eventType {
+	case "voice_offer", "voice_answer", "voice_ice", "voice_reject", "voice_end":
+		return true
+	default:
+		return false
+	}
+}
+
+func forwardVoiceSignal(ctx context.Context, client *mongo.Client, hub *changeStreamHub, senderID string, msg bson.M) {
+	eventType, _ := msg["type"].(string)
+	recipientID, _ := msg["recipient_id"].(string)
+	conversationID, _ := msg["conversation_id"].(string)
+	recipientID = strings.TrimSpace(recipientID)
+	conversationID = strings.TrimSpace(conversationID)
+
+	if recipientID == "" || conversationID == "" || strings.HasPrefix(conversationID, "group:") {
+		log.Printf("略過語音 signaling: sender=%s recipient=%s conversation=%s", senderID, recipientID, conversationID)
+		return
+	}
+	if conversationIDFor(senderID, recipientID) != conversationID || !conversationIncludesUser(ctx, client, conversationID, senderID) {
+		log.Printf("略過未授權語音 signaling: sender=%s recipient=%s conversation=%s", senderID, recipientID, conversationID)
+		return
+	}
+
+	payload := bson.M{
+		"type":            eventType,
+		"sender_id":       senderID,
+		"recipient_id":    recipientID,
+		"conversation_id": conversationID,
+	}
+	for _, key := range []string{"offer", "answer", "candidate"} {
+		if value, ok := msg[key]; ok {
+			payload[key] = value
+		}
+	}
+
+	hub.sendToUser(recipientID, websocketEvent{
+		Type:    eventType,
+		Payload: payload,
+	})
 }
 
 func conversationIDFor(userA string, userB string) string {
@@ -918,6 +980,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 				wsClient.setActiveConversation(nextConversationID)
 				markConversationRead(ctx, client, userID, nextConversationID)
 			}
+			continue
+		} else if isVoiceSignalType(eventType) {
+			forwardVoiceSignal(ctx, client, hub, userID, msg)
 			continue
 		}
 

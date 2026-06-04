@@ -1,6 +1,14 @@
 import { useTranslation } from 'react-i18next'
 
-export default function ChatHeader({ isConnected, room, memberNames = [], onBack, onLeaveGroup }) {
+export default function ChatHeader({
+  isConnected,
+  room,
+  memberNames = [],
+  canStartVoiceCall = false,
+  onBack,
+  onLeaveGroup,
+  onStartVoiceCall,
+}) {
   const { t } = useTranslation()
   const isGroup = Boolean(room.isGroup)
   const eyebrow = room.id === 'stock_bot' ? t('chat.marketChat') : isGroup ? t('chat.groupChat') : t('chat.directMessage')
@@ -21,6 +29,11 @@ export default function ChatHeader({ isConnected, room, memberNames = [], onBack
         </div>
       </div>
       <div className="chat-header-actions">
+        {canStartVoiceCall ? (
+          <button type="button" className="voice-call-button" onClick={onStartVoiceCall}>
+            {t('chat.voiceCall')}
+          </button>
+        ) : null}
         {isGroup ? (
           <button type="button" className="leave-group-button" onClick={onLeaveGroup}>
             {t('chat.leaveGroup')}
