@@ -1,6 +1,21 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { API_URL, WS_URL } from '../config/api'
+import {
+  addFriend as addFriendApi,
+  chatQueryKeys,
+  createGroup as createGroupApi,
+  deleteFriend as deleteFriendApi,
+  fetchConversations,
+  fetchFriendRequests,
+  fetchFriends,
+  fetchGroups,
+  fetchMessages,
+  fetchUsers,
+  leaveGroup as leaveGroupApi,
+  respondFriendRequest as respondFriendRequestApi,
+} from '../api/chatApi'
+import { WS_URL } from '../config/api'
 import { resolveChangePercent } from '../utils/stockChange'
 
 const STOCK_BOT_ID = 'stock_bot'
@@ -138,6 +153,7 @@ const createGroupRoom = (group, t) => ({
 
 export const useChatViewModel = (currentUser) => {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const defaultRooms = useMemo(
     () => [
       {
@@ -447,20 +463,17 @@ export const useChatViewModel = (currentUser) => {
   }, [])
 
   const respondFriendRequest = useCallback(async (requestId, accept) => {
-    const response = await fetch(`${API_URL}/friend-requests`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: currentUser.id,
-        request_id: requestId,
-        accept,
-      }),
+    await respondFriendRequestApi({
+      userId: currentUser.id,
+      requestId,
+      accept,
     })
-
-    if (!response.ok) throw new Error('respond friend request failed')
-  }, [currentUser.id])
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.friendRequests(currentUser.id) }),
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+    ])
+  }, [currentUser.id, queryClient])
 
   const handleFriendRequest = useCallback(async (request) => {
     if (!request?.request_id || handledRequestIdsRef.current.has(request.request_id)) return
@@ -855,13 +868,11 @@ export const useChatViewModel = (currentUser) => {
     if (!room?.conversationId || loadedConversationIdsRef.current.has(room.conversationId)) return
 
     try {
-      const url = new URL(`${API_URL}/messages`)
-      url.searchParams.set('user_id', currentUser.id)
-      url.searchParams.set('conversation_id', room.conversationId)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load messages failed')
-
-      const historyMessages = await response.json()
+      const historyMessages = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.messages(currentUser.id, room.conversationId),
+        queryFn: () => fetchMessages({ userId: currentUser.id, conversationId: room.conversationId }),
+        staleTime: 10_000,
+      })
       historyMessages.forEach((message) => appendMessage(message, { isHistory: true }))
       updateRoom((currentRooms) =>
         currentRooms.map((item) =>
@@ -874,34 +885,30 @@ export const useChatViewModel = (currentUser) => {
       console.error('Message history load failed:', error)
       setRoomError(t('chat.errors.historyFailed'))
     }
-  }, [appendMessage, currentUser.id, t, touchConversationCache, updateRoom])
+  }, [appendMessage, currentUser.id, queryClient, t, touchConversationCache, updateRoom])
 
   const loadUsers = useCallback(async () => {
     try {
-      const url = new URL(`${API_URL}/users`)
-      url.searchParams.set('user_id', currentUser.id)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load users failed')
-
-      const users = await response.json()
+      const users = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.users(currentUser.id),
+        queryFn: () => fetchUsers(currentUser.id),
+      })
       availableUsersRef.current = users
       setAvailableUsers(users)
     } catch (error) {
       console.error('User list load failed:', error)
       setRoomError(t('chat.errors.usersFailed'))
     }
-  }, [currentUser.id, t])
+  }, [currentUser.id, queryClient, t])
 
   const loadFriends = useCallback(async () => {
     setRoomError('')
 
     try {
-      const url = new URL(`${API_URL}/friends`)
-      url.searchParams.set('user_id', currentUser.id)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load friends failed')
-
-      const friends = await response.json()
+      const friends = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.friends(currentUser.id),
+        queryFn: () => fetchFriends(currentUser.id),
+      })
       friends.forEach((friend) => {
         appendRoom(createFriendRoom(currentUser.id, friend, t))
       })
@@ -909,31 +916,27 @@ export const useChatViewModel = (currentUser) => {
       console.error('Friend list load failed:', error)
       setRoomError(t('chat.errors.friendsFailed'))
     }
-  }, [appendRoom, currentUser.id, t])
+  }, [appendRoom, currentUser.id, queryClient, t])
 
   const loadGroups = useCallback(async () => {
     try {
-      const url = new URL(`${API_URL}/groups`)
-      url.searchParams.set('user_id', currentUser.id)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load groups failed')
-
-      const groups = await response.json()
+      const groups = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.groups(currentUser.id),
+        queryFn: () => fetchGroups(currentUser.id),
+      })
       groups.forEach((group) => appendRoom(createGroupRoom(group, t)))
     } catch (error) {
       console.error('Group list load failed:', error)
       setRoomError(t('chat.errors.groupsFailed'))
     }
-  }, [appendRoom, currentUser.id, t])
+  }, [appendRoom, currentUser.id, queryClient, t])
 
   const loadConversations = useCallback(async () => {
     try {
-      const url = new URL(`${API_URL}/conversations`)
-      url.searchParams.set('user_id', currentUser.id)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load conversations failed')
-
-      const conversations = await response.json()
+      const conversations = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.conversations(currentUser.id),
+        queryFn: () => fetchConversations(currentUser.id),
+      })
       conversations.forEach((conversation) => {
         const isStockBot = conversation.recipient_id === STOCK_BOT_ID
         const isGroup = Boolean(conversation.is_group)
@@ -966,7 +969,7 @@ export const useChatViewModel = (currentUser) => {
       console.error('Conversation list load failed:', error)
       setRoomError(t('chat.errors.conversationsFailed'))
     }
-  }, [appendRoom, currentUser.id, t])
+  }, [appendRoom, currentUser.id, queryClient, t])
 
   const createGroup = useCallback(async ({ name, memberIds }) => {
     const groupName = name.trim()
@@ -975,20 +978,15 @@ export const useChatViewModel = (currentUser) => {
 
     setRoomError('')
     try {
-      const response = await fetch(`${API_URL}/groups`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          name: groupName,
-          member_ids: selectedMemberIds,
-        }),
+      const group = await createGroupApi({
+        userId: currentUser.id,
+        name: groupName,
+        memberIds: selectedMemberIds,
       })
-      if (!response.ok) throw new Error('create group failed')
-
-      const group = await response.json()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.groups(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+      ])
       const room = createGroupRoom(group, t)
       handledGroupIdsRef.current.add(group.group_id)
       activateRoom(room)
@@ -998,7 +996,7 @@ export const useChatViewModel = (currentUser) => {
       console.error('Create group failed:', error)
       setRoomError(t('chat.errors.createGroupFailed'))
     }
-  }, [activateRoom, currentUser.id, loadConversations, loadGroups, t])
+  }, [activateRoom, currentUser.id, loadConversations, loadGroups, queryClient, t])
 
   const leaveGroup = useCallback(async (roomId) => {
     const room = roomsRef.current.find((item) => item.id === roomId)
@@ -1007,17 +1005,14 @@ export const useChatViewModel = (currentUser) => {
 
     setRoomError('')
     try {
-      const response = await fetch(`${API_URL}/groups/leave`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          group_id: room.recipientId,
-        }),
+      await leaveGroupApi({
+        userId: currentUser.id,
+        groupId: room.recipientId,
       })
-      if (!response.ok) throw new Error('leave group failed')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.groups(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+      ])
 
       const nextRooms = roomsRef.current.filter((item) => item.id !== room.id)
       roomsRef.current = sortRooms(nextRooms)
@@ -1044,16 +1039,14 @@ export const useChatViewModel = (currentUser) => {
       console.error('Leave group failed:', error)
       setRoomError(t('chat.errors.leaveGroupFailed'))
     }
-  }, [currentUser.id, initialRooms, loadConversations, loadGroups, sendActiveConversation, t, touchConversationCache])
+  }, [currentUser.id, initialRooms, loadConversations, loadGroups, queryClient, sendActiveConversation, t, touchConversationCache])
 
   const loadFriendRequests = useCallback(async () => {
     try {
-      const url = new URL(`${API_URL}/friend-requests`)
-      url.searchParams.set('user_id', currentUser.id)
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('load friend requests failed')
-
-      const requests = await response.json()
+      const requests = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.friendRequests(currentUser.id),
+        queryFn: () => fetchFriendRequests(currentUser.id),
+      })
       for (const request of requests) {
         if (handledRequestIdsRef.current.has(request.request_id)) continue
         rememberHandledRequest(request.request_id)
@@ -1064,7 +1057,7 @@ export const useChatViewModel = (currentUser) => {
     } catch (error) {
       console.error('Friend request load failed:', error)
     }
-  }, [currentUser.id, rememberHandledRequest, respondFriendRequest, t])
+  }, [currentUser.id, queryClient, rememberHandledRequest, respondFriendRequest, t])
 
   const selectRoom = useCallback((roomId) => {
     if (roomId === activeRoomIdRef.current) return
@@ -1109,25 +1102,20 @@ export const useChatViewModel = (currentUser) => {
     setRoomError('')
 
     try {
-      const response = await fetch(`${API_URL}/friends`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          display_name: name,
-        }),
+      await addFriendApi({
+        userId: currentUser.id,
+        displayName: name,
       })
-      if (!response.ok) throw new Error('create friend failed')
-
-      await response.json()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+      ])
       setRoomError(t('chat.errors.friendInviteSent'))
     } catch (error) {
       console.error('Add friend failed:', error)
       setRoomError(t('chat.errors.addFriendFailed'))
     }
-  }, [currentUser.id, t])
+  }, [currentUser.id, queryClient, t])
 
   const deleteFriend = useCallback(async (roomId) => {
     const room = roomsRef.current.find((item) => item.id === roomId)
@@ -1136,17 +1124,14 @@ export const useChatViewModel = (currentUser) => {
 
     setRoomError('')
     try {
-      const response = await fetch(`${API_URL}/friends/delete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          friend_id: room.recipientId,
-        }),
+      await deleteFriendApi({
+        userId: currentUser.id,
+        friendId: room.recipientId,
       })
-      if (!response.ok) throw new Error('delete friend failed')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+      ])
 
       const nextRooms = roomsRef.current.map((item) =>
         item.id === room.id ? { ...item, isFriend: false, description: t('chat.conversation') } : item,
@@ -1159,7 +1144,7 @@ export const useChatViewModel = (currentUser) => {
       console.error('Delete friend failed:', error)
       setRoomError(t('chat.errors.deleteFriendFailed'))
     }
-  }, [currentUser.id, loadConversations, loadFriends, t])
+  }, [currentUser.id, loadConversations, loadFriends, queryClient, t])
 
   const attachFile = (file) => {
     setFileAttachment(file)

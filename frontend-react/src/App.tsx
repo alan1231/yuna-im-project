@@ -1,3 +1,4 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
@@ -5,9 +6,9 @@ import AccountSetup from './components/account/AccountSetup'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow'
 import LanguageSwitcher from './components/LanguageSwitcher.jsx'
-import { API_URL } from './config/api'
+import { chatQueryKeys, createUser as createUserApi, fetchUsers } from './api/chatApi'
 import { useAuthStore } from './stores/authStore'
-import type { ApiUser, CurrentUser } from './types/chat'
+import type { CurrentUser } from './types/chat'
 
 const createLocalUserId = () => {
   return window.crypto?.randomUUID?.() || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -31,6 +32,7 @@ function ChatRoute() {
   const currentUser = useAuthStore((state) => state.currentUser)
   const setCurrentUser = useAuthStore((state) => state.setCurrentUser)
   const clearCurrentUser = useAuthStore((state) => state.clearCurrentUser)
+  const queryClient = useQueryClient()
   const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [showBackendWakeHint, setShowBackendWakeHint] = useState(false)
   const [accountError, setAccountError] = useState('')
@@ -38,6 +40,13 @@ function ChatRoute() {
   const persistUser = (user: CurrentUser) => {
     setCurrentUser(user)
   }
+
+  const createUserMutation = useMutation({
+    mutationFn: createUserApi,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.users('') })
+    },
+  })
 
   const createUser = async (displayName: string) => {
     const name = displayName.trim()
@@ -51,34 +60,19 @@ function ChatRoute() {
     }, 1200)
 
     try {
-      const response = await fetch(`${API_URL}/users`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: createLocalUserId(),
-          display_name: name,
-        }),
+      const user = await createUserMutation.mutateAsync({
+        userId: createLocalUserId(),
+        displayName: name,
       })
-
-      if (response.status === 409) {
-        setAccountError(t('account.errors.duplicateName'))
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error('create user failed')
-      }
-
-      const user = (await response.json()) as ApiUser
       persistUser({
         id: user.user_id,
         displayName: user.display_name,
       })
     } catch (error) {
       console.error('Account creation failed:', error)
-      setAccountError(t('account.errors.createFailed'))
+      setAccountError(error instanceof Error && error.message.includes('409')
+        ? t('account.errors.duplicateName')
+        : t('account.errors.createFailed'))
     } finally {
       window.clearTimeout(wakeHintTimer)
       setShowBackendWakeHint(false)
@@ -98,10 +92,10 @@ function ChatRoute() {
     }, 1200)
 
     try {
-      const response = await fetch(`${API_URL}/users`)
-      if (!response.ok) throw new Error('load users failed')
-
-      const users = (await response.json()) as ApiUser[]
+      const users = await queryClient.fetchQuery({
+        queryKey: chatQueryKeys.users(''),
+        queryFn: () => fetchUsers(),
+      })
       const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
       if (!user) {
         setAccountError(t('account.errors.loginNotFound'))
