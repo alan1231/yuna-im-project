@@ -191,6 +191,7 @@ export const useChatViewModel = (currentUser) => {
   const peerConnectionRef = useRef(null)
   const localStreamRef = useRef(null)
   const remoteAudioRef = useRef(null)
+  const ringtoneRef = useRef(null)
   const pendingOfferRef = useRef(null)
   const handledRequestIdsRef = useRef(new Set())
   const handledGroupIdsRef = useRef(new Set())
@@ -515,7 +516,68 @@ export const useChatViewModel = (currentUser) => {
     return true
   }, [currentUser.id, t])
 
+  const stopIncomingRingtone = useCallback(() => {
+    const ringtone = ringtoneRef.current
+    if (!ringtone) return
+
+    window.clearInterval(ringtone.intervalId)
+    ringtone.nodes.forEach((node) => {
+      try {
+        node.stop()
+      } catch {
+        // The oscillator may already be stopped by its scheduled end time.
+      }
+      node.disconnect()
+    })
+    ringtone.gain?.disconnect()
+    ringtone.audioContext?.close().catch(() => {})
+    ringtoneRef.current = null
+  }, [])
+
+  const startIncomingRingtone = useCallback(() => {
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
+    if (ringtoneRef.current || !AudioContextConstructor) return
+
+    const audioContext = new AudioContextConstructor()
+    const gain = audioContext.createGain()
+    gain.gain.value = 0.05
+    gain.connect(audioContext.destination)
+
+    const playTone = () => {
+      const now = audioContext.currentTime
+      const nodes = []
+
+      ;[0, 0.38].forEach((offset) => {
+        const oscillator = audioContext.createOscillator()
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(660, now + offset)
+        oscillator.frequency.exponentialRampToValueAtTime(880, now + offset + 0.18)
+        oscillator.connect(gain)
+        oscillator.start(now + offset)
+        oscillator.stop(now + offset + 0.28)
+        nodes.push(oscillator)
+      })
+
+      ringtoneRef.current = {
+        ...ringtoneRef.current,
+        nodes,
+      }
+    }
+
+    ringtoneRef.current = {
+      audioContext,
+      intervalId: window.setInterval(playTone, 1600),
+      gain,
+      nodes: [],
+    }
+
+    audioContext.resume().then(playTone).catch(() => {
+      stopIncomingRingtone()
+    })
+  }, [stopIncomingRingtone])
+
   const cleanupVoiceCall = useCallback(() => {
+    stopIncomingRingtone()
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
     localStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -524,7 +586,7 @@ export const useChatViewModel = (currentUser) => {
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null
     }
-  }, [])
+  }, [stopIncomingRingtone])
 
   const setRemoteAudioElement = useCallback((element) => {
     remoteAudioRef.current = element
@@ -572,6 +634,7 @@ export const useChatViewModel = (currentUser) => {
     if (!room || room.isGroup || room.id === STOCK_BOT_ID) return
 
     pendingOfferRef.current = payload
+    startIncomingRingtone()
     setVoiceCall({
       status: 'incoming',
       roomId: room.id,
@@ -579,7 +642,7 @@ export const useChatViewModel = (currentUser) => {
       peerName: room.name,
       isMuted: false,
     })
-  }, [findRoomForVoiceSignal])
+  }, [findRoomForVoiceSignal, startIncomingRingtone])
 
   const handleVoiceAnswer = useCallback(async (payload) => {
     const peer = peerConnectionRef.current
