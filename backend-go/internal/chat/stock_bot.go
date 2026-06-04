@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -89,6 +90,19 @@ type twseStockDayAllRow struct {
 	Code         string `json:"Code"`
 	ClosingPrice string `json:"ClosingPrice"`
 	Change       string `json:"Change"`
+}
+
+type finMindDividendResponse struct {
+	Message string               `json:"msg"`
+	Status  int                  `json:"status"`
+	Data    []finMindDividendRow `json:"data"`
+}
+
+type finMindDividendRow struct {
+	StockID                   string  `json:"stock_id"`
+	CashEarningsDistribution  float64 `json:"CashEarningsDistribution"`
+	CashExDividendTradingDate string  `json:"CashExDividendTradingDate"`
+	Date                      string  `json:"date"`
 }
 
 type stockDividend struct {
@@ -203,7 +217,10 @@ func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
 
 	stock, err := fetchFastStockData(ctx, symbol)
 	if err == nil && stock.Status == "ok" {
-		if yahooStock, yahooErr := fetchYahooStockDataWithTimeout(ctx, symbol, stockDividendTimeout); yahooErr == nil && yahooStock.Status == "ok" {
+		if dividends, dividendErr := fetchStockDividendsWithTimeout(ctx, symbol); dividendErr == nil && len(dividends) > 0 {
+			stock.Dividends = dividends
+			stock.Source += "+finmind-dividend"
+		} else if yahooStock, yahooErr := fetchYahooStockDataWithTimeout(ctx, symbol, stockDividendTimeout); yahooErr == nil && yahooStock.Status == "ok" {
 			stock.Dividends = yahooStock.Dividends
 		}
 		setCachedStockData(symbol, stock)
@@ -212,6 +229,12 @@ func fetchStockData(ctx context.Context, symbol string) (stockData, error) {
 
 	yahooStock, yahooErr := fetchYahooStockDataWithTimeout(ctx, symbol, stockSourceTimeout)
 	if yahooErr == nil && yahooStock.Status == "ok" {
+		if len(yahooStock.Dividends) == 0 {
+			if dividends, dividendErr := fetchStockDividendsWithTimeout(ctx, symbol); dividendErr == nil && len(dividends) > 0 {
+				yahooStock.Dividends = dividends
+				yahooStock.Source += "+finmind-dividend"
+			}
+		}
 		setCachedStockData(symbol, yahooStock)
 		return yahooStock, nil
 	}
@@ -240,16 +263,30 @@ func fetchFastStockData(ctx context.Context, symbol string) (stockData, error) {
 	sourceCtx, cancel := context.WithTimeout(ctx, stockSourceTimeout)
 	defer cancel()
 
-	if regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol) {
+	if isTaiwanStockSymbol(symbol) {
 		return fetchFallbackStockData(sourceCtx, symbol)
 	}
 	return fetchStooqStockData(sourceCtx, symbol)
+}
+
+func isTaiwanStockSymbol(symbol string) bool {
+	return regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol)
 }
 
 func fetchYahooStockDataWithTimeout(ctx context.Context, symbol string, timeout time.Duration) (stockData, error) {
 	sourceCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	return fetchYahooStockData(sourceCtx, symbol)
+}
+
+func fetchStockDividendsWithTimeout(ctx context.Context, symbol string) ([]stockDividend, error) {
+	if !isTaiwanStockSymbol(symbol) {
+		return nil, nil
+	}
+
+	sourceCtx, cancel := context.WithTimeout(ctx, stockSourceTimeout)
+	defer cancel()
+	return fetchFinMindTaiwanStockDividends(sourceCtx, symbol)
 }
 
 func getCachedStockData(symbol string) (stockData, bool) {
@@ -362,8 +399,81 @@ func fetchYahooStockData(ctx context.Context, symbol string) (stockData, error) 
 	}, nil
 }
 
+func fetchFinMindTaiwanStockDividends(ctx context.Context, symbol string) ([]stockDividend, error) {
+	ticker := strings.TrimSuffix(symbol, ".TW")
+	taipei := time.FixedZone("Asia/Taipei", 8*60*60)
+	startDate := time.Now().In(taipei).AddDate(-2, 0, 0).Format("2006-01-02")
+
+	query := url.Values{}
+	query.Set("dataset", "TaiwanStockDividend")
+	query.Set("data_id", ticker)
+	query.Set("start_date", startDate)
+	if token := strings.TrimSpace(os.Getenv("FINMIND_TOKEN")); token != "" {
+		query.Set("token", token)
+	}
+
+	endpoint := fmt.Sprintf("https://api.finmindtrade.com/api/v4/data?%s", query.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "yuna-im-stock-bot/1.0")
+
+	resp, err := stockHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("FinMind 股利查詢 HTTP 狀態異常: symbol=%s status=%d", symbol, resp.StatusCode)
+		return nil, nil
+	}
+
+	var payload finMindDividendResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if payload.Status != http.StatusOK {
+		log.Printf("FinMind 股利查詢狀態異常: symbol=%s status=%d msg=%s", symbol, payload.Status, payload.Message)
+		return nil, nil
+	}
+
+	return extractFinMindDividends(payload.Data), nil
+}
+
+func extractFinMindDividends(rows []finMindDividendRow) []stockDividend {
+	dividends := make([]stockDividend, 0, len(rows))
+	for _, row := range rows {
+		amount := row.CashEarningsDistribution
+		if amount <= 0 {
+			continue
+		}
+
+		dateText := strings.TrimSpace(row.CashExDividendTradingDate)
+		if dateText == "" {
+			dateText = strings.TrimSpace(row.Date)
+		}
+		date, err := time.Parse("2006-01-02", dateText)
+		if err != nil {
+			continue
+		}
+
+		dividends = append(dividends, stockDividend{
+			Amount: round(amount, 2),
+			Date:   date,
+		})
+	}
+
+	sort.Slice(dividends, func(i, j int) bool {
+		return dividends[i].Date.Before(dividends[j].Date)
+	})
+
+	return dividends
+}
+
 func fetchFallbackStockData(ctx context.Context, symbol string) (stockData, error) {
-	if regexp.MustCompile(`^\d{4}\.TW$`).MatchString(symbol) {
+	if isTaiwanStockSymbol(symbol) {
 		stock, err := fetchTWSEStockData(ctx, symbol)
 		if err == nil && stock.Status == "ok" {
 			return stock, nil

@@ -56,3 +56,23 @@ func TestParseMarketNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractFinMindDividends(t *testing.T) {
+	dividends := extractFinMindDividends([]finMindDividendRow{
+		{CashEarningsDistribution: 5.00001118, CashExDividendTradingDate: "2025-12-11"},
+		{CashEarningsDistribution: 0, CashExDividendTradingDate: "2025-10-01"},
+		{CashEarningsDistribution: 4.50002042, CashExDividendTradingDate: "2025-06-12"},
+		{CashEarningsDistribution: 6.00003573, Date: "2026-03-23"},
+		{CashEarningsDistribution: 1, CashExDividendTradingDate: "bad-date"},
+	})
+
+	if len(dividends) != 3 {
+		t.Fatalf("len(dividends) = %d, want 3", len(dividends))
+	}
+	if dividends[0].Date.Format("2006-01-02") != "2025-06-12" || dividends[0].Amount != 4.5 {
+		t.Fatalf("first dividend = %+v, want 2025-06-12 amount 4.5", dividends[0])
+	}
+	if dividends[2].Date.Format("2006-01-02") != "2026-03-23" || dividends[2].Amount != 6 {
+		t.Fatalf("last dividend = %+v, want 2026-03-23 amount 6", dividends[2])
+	}
+}
