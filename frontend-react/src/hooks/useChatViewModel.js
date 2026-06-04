@@ -14,6 +14,7 @@ import {
   fetchUsers,
   leaveGroup as leaveGroupApi,
   respondFriendRequest as respondFriendRequestApi,
+  wakeBackend as wakeBackendApi,
 } from '../api/chatApi'
 import { WS_URL } from '../config/api'
 import { resolveChangePercent } from '../utils/stockChange'
@@ -191,6 +192,7 @@ export const useChatViewModel = (currentUser) => {
   const [fileAttachment, setFileAttachment] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState('')
+  const [isWakingBackend, setIsWakingBackend] = useState(false)
   const [roomError, setRoomError] = useState('')
   const [voiceCall, setVoiceCall] = useState({
     status: 'idle',
@@ -1059,6 +1061,48 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [currentUser.id, queryClient, rememberHandledRequest, respondFriendRequest, t])
 
+  const reloadChatData = useCallback(async () => {
+    await loadUsers()
+    await loadFriends()
+    await loadGroups()
+    await loadConversations()
+    await loadFriendRequests()
+    await loadMessagesForRoom(getActiveRoom())
+  }, [
+    getActiveRoom,
+    loadConversations,
+    loadFriendRequests,
+    loadFriends,
+    loadGroups,
+    loadMessagesForRoom,
+    loadUsers,
+  ])
+
+  const wakeBackend = useCallback(async () => {
+    if (isWakingBackend) return
+
+    setIsWakingBackend(true)
+    setConnectionError(t('chat.wakeInProgress'))
+    try {
+      await wakeBackendApi()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.users(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.groups(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friendRequests(currentUser.id) }),
+      ])
+      await reloadChatData()
+      reconnect()
+      setConnectionError('')
+    } catch (error) {
+      console.error('Backend wake failed:', error)
+      setConnectionError(t('chat.errors.wakeFailed'))
+    } finally {
+      setIsWakingBackend(false)
+    }
+  }, [currentUser.id, isWakingBackend, queryClient, reconnect, reloadChatData, t])
+
   const selectRoom = useCallback((roomId) => {
     if (roomId === activeRoomIdRef.current) return
 
@@ -1259,6 +1303,7 @@ export const useChatViewModel = (currentUser) => {
     fileAttachment,
     isConnected,
     connectionError,
+    isWakingBackend,
     roomError,
     canSend,
     isStockBotPending,
@@ -1273,6 +1318,7 @@ export const useChatViewModel = (currentUser) => {
     attachFile,
     clearFileAttachment,
     refreshFriends: loadFriends,
+    wakeBackend,
     sendMessage,
     startVoiceCall,
     acceptVoiceCall,

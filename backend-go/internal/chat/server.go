@@ -1257,6 +1257,28 @@ func handleStockQuote(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(bson.M{
+		"status": "ok",
+		"time":   time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		log.Printf("健康檢查回應 JSON 失敗: %v", err)
+	}
+}
+
 func messagePreviewText(message bson.M) string {
 	text := strings.TrimSpace(fmt.Sprint(message["text"]))
 	if text != "" && text != "<nil>" {
@@ -1545,6 +1567,9 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/stock/quote", func(w http.ResponseWriter, r *http.Request) {
 		handleStockQuote(w, r)
+	})
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		handleHealth(w, r)
 	})
 	registerAdminRoutes(mux, client, redisClient, cfg.AdminToken)
 

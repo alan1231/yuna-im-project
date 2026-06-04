@@ -30,6 +30,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     fileAttachment,
     isConnected,
     connectionError,
+    isWakingBackend,
     roomError,
     canSend,
     isStockBotPending,
@@ -44,6 +45,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     attachFile,
     clearFileAttachment,
     refreshFriends,
+    wakeBackend,
     sendMessage,
     startVoiceCall,
     acceptVoiceCall,
@@ -121,7 +123,14 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
           onStartVoiceCall={startVoiceCall}
         />
 
-        {connectionError ? <p className="connection-error">{connectionError}</p> : null}
+        {connectionError ? (
+          <div className="connection-error">
+            <span>{connectionError}</span>
+            <button type="button" onClick={wakeBackend} disabled={isWakingBackend}>
+              {isWakingBackend ? t('chat.wakingBackend') : t('chat.wakeBackend')}
+            </button>
+          </div>
+        ) : null}
 
         <VoiceCallBar
           voiceCall={voiceCall}

@@ -151,3 +151,8 @@ export const respondFriendRequest = (payload: { userId: string; requestId: strin
       accept: payload.accept,
     }),
   })
+
+export const wakeBackend = () =>
+  requestJson<{ status: string; time: string }>(`${API_URL}/health`, {
+    method: 'GET',
+  })

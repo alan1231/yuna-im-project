@@ -1220,10 +1220,35 @@ h1 {
   grid-area: error;
   margin: 0;
   padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--danger);
   background: var(--danger-bg);
   border-bottom: 1px solid #ffd1cc;
   font-size: 14px;
+}
+
+.connection-error span {
+  min-width: 0;
+}
+
+.connection-error button {
+  min-height: 34px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  color: #ffffff;
+  background: var(--danger);
+  border-radius: 8px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.connection-error button:disabled {
+  color: #9aa4b2;
+  background: #e4e8ef;
+  cursor: progress;
 }
 
 .voice-call-bar {
@@ -2430,6 +2455,16 @@ h1 {
   .chat-subtitle {
     max-width: calc(100vw - 112px);
     font-size: 13px;
+  }
+
+  .connection-error {
+    padding-inline: 16px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connection-error button {
+    width: 100%;
   }
 
   .voice-call-bar {
