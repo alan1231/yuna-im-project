@@ -1,4 +1,15 @@
 import { useTranslation } from 'react-i18next'
+import type { ChatRoom } from '../../types/chat'
+
+type ChatHeaderProps = {
+  isConnected: boolean
+  room: ChatRoom
+  memberNames?: string[]
+  canStartVoiceCall?: boolean
+  onBack: () => void
+  onLeaveGroup: () => void
+  onStartVoiceCall: () => void
+}
 
 export default function ChatHeader({
   isConnected,
@@ -8,7 +19,7 @@ export default function ChatHeader({
   onBack,
   onLeaveGroup,
   onStartVoiceCall,
-}) {
+}: ChatHeaderProps) {
   const { t } = useTranslation()
   const isGroup = Boolean(room.isGroup)
   const eyebrow = room.id === 'stock_bot' ? t('chat.marketChat') : isGroup ? t('chat.groupChat') : t('chat.directMessage')

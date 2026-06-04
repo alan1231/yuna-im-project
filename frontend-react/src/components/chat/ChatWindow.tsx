@@ -2,14 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatViewModel } from '../../hooks/useChatViewModel'
 import ChatComposer from './ChatComposer.jsx'
-import ChatHeader from './ChatHeader.jsx'
+import ChatHeader from './ChatHeader'
 import MessageList from './MessageList.jsx'
 import RoomList from './RoomList.jsx'
 import VoiceCallBar from './VoiceCallBar.jsx'
+import { useChatUiStore } from '../../stores/chatUiStore'
+import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
 
-export default function ChatWindow({ currentUser, onLogout }) {
+type ChatWindowProps = {
+  currentUser: CurrentUser
+  onLogout: () => void
+}
+
+export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
   const { t } = useTranslation()
-  const [mobileView, setMobileView] = useState('rooms')
+  const mobileView = useChatUiStore((state) => state.mobileView)
+  const setMobileView = useChatUiStore((state) => state.setMobileView)
   const [wasMobile, setWasMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
   const {
     rooms,
@@ -43,27 +51,28 @@ export default function ChatWindow({ currentUser, onLogout }) {
     endVoiceCall,
     toggleVoiceMute,
   } = useChatViewModel(currentUser)
+  const typedActiveRoom = activeRoom as ChatRoom
 
-  const openRoom = (roomId) => {
+  const openRoom = (roomId: string) => {
     selectRoom(roomId)
     setMobileView('chat')
   }
 
-  const openUserChat = (user) => {
+  const openUserChat = (user: ApiUser) => {
     startChatWithUser(user)
     setMobileView('chat')
   }
 
   const activeRoomMemberNames = useMemo(() => {
-    if (!activeRoom?.isGroup) return []
+    if (!typedActiveRoom?.isGroup) return []
 
     const namesById = new Map([[currentUser.id, currentUser.displayName]])
-    availableUsers.forEach((user) => {
+    availableUsers.forEach((user: ApiUser) => {
       namesById.set(user.user_id, user.display_name)
     })
 
-    return (activeRoom.memberIds || []).map((memberId) => namesById.get(memberId) || memberId)
-  }, [activeRoom, availableUsers, currentUser.displayName, currentUser.id])
+    return (typedActiveRoom.memberIds || []).map((memberId: string) => namesById.get(memberId) || memberId)
+  }, [typedActiveRoom, availableUsers, currentUser.displayName, currentUser.id])
 
   useEffect(() => {
     const syncMobileView = () => {
@@ -104,11 +113,11 @@ export default function ChatWindow({ currentUser, onLogout }) {
       <section className="chat-panel">
         <ChatHeader
           isConnected={isConnected}
-          room={activeRoom}
+          room={typedActiveRoom}
           memberNames={activeRoomMemberNames}
-          canStartVoiceCall={activeRoom.id !== 'stock_bot' && !activeRoom.isGroup && voiceCall.status === 'idle'}
+          canStartVoiceCall={typedActiveRoom.id !== 'stock_bot' && !typedActiveRoom.isGroup && voiceCall.status === 'idle'}
           onBack={() => setMobileView('rooms')}
-          onLeaveGroup={() => leaveGroup(activeRoom.id)}
+          onLeaveGroup={() => leaveGroup(typedActiveRoom.id)}
           onStartVoiceCall={startVoiceCall}
         />
 
@@ -125,7 +134,7 @@ export default function ChatWindow({ currentUser, onLogout }) {
 
         <MessageList
           messages={messages}
-          activeRoom={activeRoom}
+          activeRoom={typedActiveRoom}
           isStockBotPending={isStockBotPending}
           onQuickStockQuery={sendMessage}
         />
@@ -134,15 +143,15 @@ export default function ChatWindow({ currentUser, onLogout }) {
           value={userInput}
           onChange={setUserInput}
           fileAttachment={fileAttachment}
-          allowAttachments={activeRoom.id !== 'stock_bot'}
-          variant={activeRoom.id === 'stock_bot' ? 'stock' : 'chat'}
+          allowAttachments={typedActiveRoom.id !== 'stock_bot'}
+          variant={typedActiveRoom.id === 'stock_bot' ? 'stock' : 'chat'}
           canSend={canSend}
           placeholder={
-            activeRoom.id === 'stock_bot'
+            typedActiveRoom.id === 'stock_bot'
               ? t('chat.stockPlaceholder')
-              : t('chat.messagePlaceholder', { name: activeRoom.name })
+              : t('chat.messagePlaceholder', { name: typedActiveRoom.name })
           }
-          submitLabel={activeRoom.id === 'stock_bot' ? t('chat.query') : t('chat.send')}
+          submitLabel={typedActiveRoom.id === 'stock_bot' ? t('chat.query') : t('chat.send')}
           onAttachFile={attachFile}
           onClearFile={clearFileAttachment}
           onSend={sendMessage}

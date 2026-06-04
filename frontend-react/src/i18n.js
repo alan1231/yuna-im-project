@@ -36,6 +36,7 @@ const resources = {
           createFailed: '建立帳號失敗，請確認 Go 後端已啟動。',
           loginNotFound: '找不到這個帳號，請確認名稱是否正確。',
           loginFailed: '登入失敗，請確認 Go 後端已啟動。',
+          displayNameRequired: '請輸入顯示名稱。',
         },
       },
       admin: {
@@ -170,6 +171,8 @@ const resources = {
           friendInviteSent: '好友邀請已送出，等待對方同意。',
           addFriendFailed: '新增朋友失敗，請確認朋友名稱是否存在。',
           deleteFriendFailed: '刪除好友失敗，請稍後再試。',
+          friendNameRequired: '請輸入朋友名稱。',
+          groupNameRequired: '請輸入群組名稱。',
           reconnecting: '目前尚未連線，正在重新連線。',
           imageCompressed: '圖片已自動壓縮。',
           fileTooLarge: '檔案需小於 2 MB；目前只有圖片可自動壓縮。',
@@ -227,6 +230,7 @@ const resources = {
           createFailed: 'Account creation failed. Confirm the Go backend is running.',
           loginNotFound: 'No account was found for this name.',
           loginFailed: 'Sign in failed. Confirm the Go backend is running.',
+          displayNameRequired: 'Enter a display name.',
         },
       },
       admin: {
@@ -361,6 +365,8 @@ const resources = {
           friendInviteSent: 'Friend request sent. Waiting for them to accept.',
           addFriendFailed: 'Failed to add friend. Confirm the friend name exists.',
           deleteFriendFailed: 'Failed to delete friend. Try again later.',
+          friendNameRequired: 'Enter a friend name.',
+          groupNameRequired: 'Enter a group name.',
           reconnecting: 'Not connected. Reconnecting now.',
           imageCompressed: 'Image was compressed automatically.',
           fileTooLarge: 'Files must be under 2 MB. Only images can be compressed automatically.',

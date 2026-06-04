@@ -1,5 +1,24 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
+
+type AccountMode = 'login' | 'create'
+
+type AccountSetupProps = {
+  isSubmitting: boolean
+  showWakeHint?: boolean
+  error?: string
+  onCreate: (displayName: string) => void
+  onLogin: (displayName: string) => void
+}
+
+const accountSchema = z.object({
+  displayName: z.string().trim().min(1).max(32),
+})
+
+type AccountFormValues = z.infer<typeof accountSchema>
 
 export default function AccountSetup({
   isSubmitting,
@@ -7,23 +26,31 @@ export default function AccountSetup({
   error = '',
   onCreate,
   onLogin,
-}) {
+}: AccountSetupProps) {
   const { t } = useTranslation()
-  const [displayName, setDisplayName] = useState('')
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState<AccountMode>('login')
+  const {
+    formState: { errors },
+    handleSubmit,
+    register,
+    watch,
+  } = useForm<AccountFormValues>({
+    resolver: zodResolver(accountSchema),
+    defaultValues: {
+      displayName: '',
+    },
+  })
+  const displayName = watch('displayName')
 
-  const submit = (event) => {
-    event.preventDefault()
-    const name = displayName.trim()
-    if (!name) return
-
+  const submit = handleSubmit(({ displayName: rawDisplayName }) => {
+    const name = rawDisplayName.trim()
     if (mode === 'login') {
       onLogin(name)
       return
     }
 
     onCreate(name)
-  }
+  })
 
   return (
     <main className="account-screen">
@@ -66,24 +93,24 @@ export default function AccountSetup({
           <label className="account-field">
             <span>{t('account.displayName')}</span>
             <input
-              value={displayName}
+              {...register('displayName')}
               type="text"
-              maxLength="32"
+              maxLength={32}
               placeholder={t('account.placeholder')}
               autoComplete="nickname"
               autoFocus
-              onChange={(event) => setDisplayName(event.target.value)}
             />
           </label>
 
-          {error ? (
-            <p className="account-message account-message-error">{error}</p>
+          {errors.displayName ? (
+            <p className="account-message account-message-error">{t('account.errors.displayNameRequired')}</p>
           ) : null}
+          {error ? <p className="account-message account-message-error">{error}</p> : null}
           {!error && showWakeHint ? (
             <p className="account-message account-message-info">{t('account.wakeHint')}</p>
           ) : null}
 
-          <button className="account-submit" type="submit" disabled={isSubmitting || !displayName.trim()}>
+          <button className="account-submit" type="submit" disabled={isSubmitting || !displayName?.trim()}>
             {isSubmitting
               ? t('account.submitting')
               : mode === 'login'

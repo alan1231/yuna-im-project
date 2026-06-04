@@ -1,6 +1,17 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { z } from 'zod'
 import { formatStockPreview } from '../../utils/stockReply'
+
+const friendFormSchema = z.object({
+  friendName: z.string().trim().min(1).max(32),
+})
+
+const groupFormSchema = z.object({
+  groupName: z.string().trim().min(1).max(32),
+})
 
 const formatPresence = (room, t, language) => {
   if (room.online) return t('chat.presence.online')
@@ -47,8 +58,6 @@ export default function RoomList({
   onLogout,
 }) {
   const { i18n, t } = useTranslation()
-  const [friendName, setFriendName] = useState('')
-  const [groupName, setGroupName] = useState('')
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState([])
   const [searchText, setSearchText] = useState('')
   const [contactSearchText, setContactSearchText] = useState('')
@@ -57,6 +66,20 @@ export default function RoomList({
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
   const [drawerView, setDrawerView] = useState('menu')
   const [openFriendMenuId, setOpenFriendMenuId] = useState('')
+  const friendForm = useForm({
+    resolver: zodResolver(friendFormSchema),
+    defaultValues: {
+      friendName: '',
+    },
+  })
+  const groupForm = useForm({
+    resolver: zodResolver(groupFormSchema),
+    defaultValues: {
+      groupName: '',
+    },
+  })
+  const friendName = friendForm.watch('friendName')
+  const groupName = groupForm.watch('groupName')
   const normalizedSearch = searchText.trim().toLowerCase()
   const normalizedContactSearch = contactSearchText.trim().toLowerCase()
 
@@ -119,14 +142,11 @@ export default function RoomList({
     onDeleteFriend(roomId)
   }
 
-  const submitFriend = (event) => {
-    event.preventDefault()
-    const name = friendName.trim()
-    if (!name) return
-
+  const submitFriend = friendForm.handleSubmit(({ friendName: rawFriendName }) => {
+    const name = rawFriendName.trim()
     onAddFriend(name)
-    setFriendName('')
-  }
+    friendForm.reset()
+  })
 
   const toggleGroupMember = (memberId) => {
     setSelectedGroupMemberIds((currentIds) =>
@@ -136,17 +156,16 @@ export default function RoomList({
     )
   }
 
-  const submitGroup = (event) => {
-    event.preventDefault()
-    const name = groupName.trim()
+  const submitGroup = groupForm.handleSubmit(({ groupName: rawGroupName }) => {
+    const name = rawGroupName.trim()
     if (!name || !selectedGroupMemberIds.length) return
 
     onCreateGroup({ name, memberIds: selectedGroupMemberIds })
-    setGroupName('')
+    groupForm.reset()
     setSelectedGroupMemberIds([])
     setIsCreateGroupModalOpen(false)
     closeDrawer()
-  }
+  })
 
   return (
     <aside className="room-sidebar" aria-label={t('chat.roomListLabel')}>
@@ -305,14 +324,16 @@ export default function RoomList({
             <label>
               <span>{t('chat.addFriendPrompt')}</span>
               <input
-                value={friendName}
+                {...friendForm.register('friendName')}
                 type="text"
                 maxLength="32"
                 placeholder={t('chat.addFriendPlaceholder')}
                 autoComplete="off"
-                onChange={(event) => setFriendName(event.target.value)}
               />
             </label>
+            {friendForm.formState.errors.friendName ? (
+              <p className="room-error">{t('chat.errors.friendNameRequired')}</p>
+            ) : null}
             {error ? <p className="room-error">{error}</p> : null}
             <button type="submit" disabled={!friendName.trim()}>
               {t('chat.add')}
@@ -344,14 +365,16 @@ export default function RoomList({
             <label>
               <span>{t('chat.groupName')}</span>
               <input
-                value={groupName}
+                {...groupForm.register('groupName')}
                 type="text"
                 maxLength="32"
                 placeholder={t('chat.groupNamePlaceholder')}
                 autoComplete="off"
-                onChange={(event) => setGroupName(event.target.value)}
               />
             </label>
+            {groupForm.formState.errors.groupName ? (
+              <p className="room-error">{t('chat.errors.groupNameRequired')}</p>
+            ) : null}
 
             <div className="group-member-picker" aria-label={t('chat.groupMembers')}>
               {friendRooms.map((friend) => {
