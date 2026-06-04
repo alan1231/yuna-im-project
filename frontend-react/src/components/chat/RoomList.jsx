@@ -56,6 +56,7 @@ export default function RoomList({
   const [isAddFriendModalOpen, setIsAddFriendModalOpen] = useState(false)
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
   const [drawerView, setDrawerView] = useState('menu')
+  const [openFriendMenuId, setOpenFriendMenuId] = useState('')
   const normalizedSearch = searchText.trim().toLowerCase()
   const normalizedContactSearch = contactSearchText.trim().toLowerCase()
 
@@ -99,6 +100,7 @@ export default function RoomList({
 
   const closeDrawer = () => {
     setIsMenuOpen(false)
+    setOpenFriendMenuId('')
   }
 
   const openContacts = () => {
@@ -108,7 +110,13 @@ export default function RoomList({
 
   const selectContact = (roomId) => {
     onSelect(roomId)
+    setOpenFriendMenuId('')
     closeDrawer()
+  }
+
+  const deleteContact = (roomId) => {
+    setOpenFriendMenuId('')
+    onDeleteFriend(roomId)
   }
 
   const submitFriend = (event) => {
@@ -236,15 +244,30 @@ export default function RoomList({
                       </span>
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    className="drawer-delete-friend"
-                    aria-label={t('chat.deleteFriendLabel', { name: friend.name })}
-                    title={t('chat.deleteFriend')}
-                    onClick={() => onDeleteFriend(friend.id)}
-                  >
-                    ×
-                  </button>
+                  <div className="drawer-contact-actions">
+                    <button
+                      type="button"
+                      className="drawer-contact-menu-button"
+                      aria-label={t('chat.friendActionsLabel', { name: friend.name })}
+                      aria-expanded={openFriendMenuId === friend.id}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setOpenFriendMenuId((currentId) => (currentId === friend.id ? '' : friend.id))
+                      }}
+                    >
+                      ...
+                    </button>
+                    {openFriendMenuId === friend.id ? (
+                      <div className="drawer-contact-menu">
+                        <button type="button" onClick={() => selectContact(friend.id)}>
+                          {t('chat.startChat')}
+                        </button>
+                        <button type="button" className="danger-menu-item" onClick={() => deleteContact(friend.id)}>
+                          {t('chat.deleteFriend')}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ))}
               {!visibleFriendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
@@ -331,17 +354,30 @@ export default function RoomList({
             </label>
 
             <div className="group-member-picker" aria-label={t('chat.groupMembers')}>
-              {friendRooms.map((friend) => (
-                <label key={friend.id} className="group-member-option">
-                  <input
-                    type="checkbox"
-                    checked={selectedGroupMemberIds.includes(friend.recipientId)}
-                    onChange={() => toggleGroupMember(friend.recipientId)}
-                  />
-                  <span className="room-avatar">{friend.initials}</span>
-                  <span>{friend.name}</span>
-                </label>
-              ))}
+              {friendRooms.map((friend) => {
+                const isSelected = selectedGroupMemberIds.includes(friend.recipientId)
+
+                return (
+                  <label
+                    key={friend.id}
+                    className={`group-member-option ${isSelected ? 'group-member-selected' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleGroupMember(friend.recipientId)}
+                    />
+                    <span className="room-avatar">{friend.initials}</span>
+                    <span className="group-member-content">
+                      <strong>{friend.name}</strong>
+                      <span>{formatPresence(friend, t, i18n.language)}</span>
+                    </span>
+                    <span className="group-member-check" aria-hidden="true">
+                      {isSelected ? '✓' : '+'}
+                    </span>
+                  </label>
+                )
+              })}
               {!friendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
             </div>
 

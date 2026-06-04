@@ -550,15 +550,16 @@ button {
 .group-member-picker {
   max-height: 260px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   overflow-y: auto;
 }
 
 .group-member-option {
-  min-height: 50px;
-  padding: 7px;
+  position: relative;
+  min-height: 62px;
+  padding: 8px 10px;
   display: grid;
-  grid-template-columns: 18px 36px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr) 28px;
   gap: 10px;
   align-items: center;
   color: #e8eef6;
@@ -569,9 +570,15 @@ button {
 }
 
 .group-member-option input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.group-member-option:hover,
+.group-member-selected {
+  background: rgba(15, 118, 110, 0.24);
+  border-color: rgba(125, 211, 200, 0.55);
 }
 
 .group-member-option .room-avatar {
@@ -579,12 +586,45 @@ button {
   height: 36px;
 }
 
-.group-member-option > span:last-child {
+.group-member-content {
   min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.group-member-content strong,
+.group-member-content span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.group-member-content strong {
   font-weight: 800;
+}
+
+.group-member-content span {
+  color: #9fb2c8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.group-member-check {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9fb2c8;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 50%;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.group-member-selected .group-member-check {
+  color: #12312e;
+  background: #9ee9dd;
 }
 
 .drawer-toolbar {
@@ -658,10 +698,11 @@ button {
 }
 
 .drawer-contact-row {
+  position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 8px;
   align-items: center;
   border-radius: 8px;
 }
@@ -740,27 +781,74 @@ button {
   font-weight: 800;
 }
 
-.drawer-delete-friend {
-  width: 34px;
-  height: 34px;
+.drawer-contact-actions {
+  position: relative;
+  align-self: center;
+}
+
+.drawer-contact-menu-button {
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffb4a8;
-  background: rgba(180, 35, 24, 0.12);
-  border: 1px solid rgba(255, 180, 168, 0.28);
-  border-radius: 8px;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1;
+  color: #9fb2c8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  line-height: 0;
   cursor: pointer;
 }
 
-.drawer-delete-friend:hover,
-.drawer-delete-friend:focus-visible {
+.drawer-contact-menu-button:hover,
+.drawer-contact-menu-button:focus-visible {
+  color: #ffffff;
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.32);
+}
+
+.drawer-contact-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 3;
+  width: 132px;
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  background: #0f1722;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.32);
+}
+
+.drawer-contact-menu button {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #e8eef6;
+  background: transparent;
+  border-radius: 6px;
+  text-align: left;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.drawer-contact-menu button:hover,
+.drawer-contact-menu button:focus-visible {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.drawer-contact-menu .danger-menu-item {
+  color: #ffb4a8;
+}
+
+.drawer-contact-menu .danger-menu-item:hover,
+.drawer-contact-menu .danger-menu-item:focus-visible {
   color: #ffffff;
   background: var(--danger);
-  border-color: var(--danger);
 }
 
 .drawer-empty {
