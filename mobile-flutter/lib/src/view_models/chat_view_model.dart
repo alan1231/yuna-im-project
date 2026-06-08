@@ -39,6 +39,7 @@ class ChatViewModel extends ChangeNotifier {
 
   UserProfile? user;
   List<ChatRoom> rooms = const [];
+  List<ApiUser> availableUsers = const [];
   ChatRoom? activeRoom;
   bool isRestoring = true;
   bool isLoadingChat = false;
@@ -108,17 +109,32 @@ class ChatViewModel extends ChangeNotifier {
       final results = await Future.wait([
         _api.loadFriends(profile),
         _api.loadConversations(profile),
+        _api.loadGroups(profile),
+        _api.loadUsers(currentUserId: profile.id),
       ]);
 
       final mergedRooms = <String, ChatRoom>{stockRoom.id: stockRoom};
-      for (final room in [...results[0], ...results[1]]) {
+      for (final room in [
+        ...results[0] as List<ChatRoom>,
+        ...results[1] as List<ChatRoom>,
+        ...results[2] as List<ChatRoom>,
+      ]) {
         final existing = mergedRooms[room.id];
         mergedRooms[room.id] = existing == null
             ? room
-            : room.copyWith(isFriend: existing.isFriend || room.isFriend);
+            : room.copyWith(
+                isFriend: existing.isFriend || room.isFriend,
+                isGroup: existing.isGroup || room.isGroup,
+                memberIds: room.memberIds.isEmpty
+                    ? existing.memberIds
+                    : room.memberIds,
+                online: existing.online || room.online,
+                lastSeen: room.lastSeen ?? existing.lastSeen,
+              );
       }
 
-      rooms = mergedRooms.values.toList();
+      rooms = _sortRooms(mergedRooms.values.toList());
+      availableUsers = results[3] as List<ApiUser>;
       activeRoom = mergedRooms[activeRoom?.id] ?? stockRoom;
       notifyListeners();
 
@@ -172,11 +188,114 @@ class ChatViewModel extends ChangeNotifier {
     _realtime.sendMessage(user: currentUser, room: room, text: text);
   }
 
+  Future<void> startChatWithUser(ApiUser targetUser) async {
+    final currentUser = user;
+    if (currentUser == null || targetUser.id == currentUser.id) return;
+
+    final room = ChatRoom(
+      id: targetUser.id,
+      name: targetUser.displayName,
+      recipientId: targetUser.id,
+      conversationId: conversationIdFor(currentUser.id, targetUser.id),
+      online: targetUser.online,
+      lastSeen: targetUser.lastSeen,
+    );
+    _upsertRoom(room);
+    await selectRoom(rooms.firstWhere((item) => item.id == room.id));
+  }
+
+  Future<void> refreshRooms() async {
+    final currentUser = user;
+    if (currentUser == null) return;
+    await loadInitialChat(currentUser);
+  }
+
+  Future<void> addFriend(String displayName) async {
+    final currentUser = user;
+    final name = displayName.trim();
+    if (currentUser == null || name.isEmpty) return;
+
+    try {
+      await _api.addFriend(user: currentUser, displayName: name);
+      error = '好友邀請已送出。';
+      await refreshRooms();
+    } on ApiException catch (apiError) {
+      error = apiError.message;
+    } catch (_) {
+      error = '送出好友邀請失敗。';
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteFriend(ChatRoom room) async {
+    final currentUser = user;
+    if (currentUser == null) return;
+
+    try {
+      await _api.deleteFriend(user: currentUser, friendId: room.recipientId);
+      rooms = rooms
+          .map(
+            (item) =>
+                item.id == room.id ? item.copyWith(isFriend: false) : item,
+          )
+          .toList();
+      error = '';
+    } on ApiException catch (apiError) {
+      error = apiError.message;
+    } catch (_) {
+      error = '刪除好友失敗。';
+    }
+    notifyListeners();
+  }
+
+  Future<void> createGroup({
+    required String name,
+    required List<String> memberIds,
+  }) async {
+    final currentUser = user;
+    final trimmedName = name.trim();
+    if (currentUser == null || trimmedName.isEmpty || memberIds.isEmpty) return;
+
+    try {
+      final room = await _api.createGroup(
+        user: currentUser,
+        name: trimmedName,
+        memberIds: memberIds,
+      );
+      _upsertRoom(room);
+      await selectRoom(room);
+      error = '';
+    } on ApiException catch (apiError) {
+      error = apiError.message;
+    } catch (_) {
+      error = '建立群組失敗。';
+    }
+    notifyListeners();
+  }
+
+  Future<void> leaveGroup(ChatRoom room) async {
+    final currentUser = user;
+    if (currentUser == null || !room.isGroup) return;
+
+    try {
+      await _api.leaveGroup(user: currentUser, groupId: room.id);
+      rooms = rooms.where((item) => item.id != room.id).toList();
+      activeRoom = rooms.isEmpty ? null : rooms.first;
+      error = '';
+    } on ApiException catch (apiError) {
+      error = apiError.message;
+    } catch (_) {
+      error = '離開群組失敗。';
+    }
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     await _profileStore.clear();
     await _realtime.close();
     user = null;
     rooms = const [];
+    availableUsers = const [];
     activeRoom = null;
     _messagesByConversation.clear();
     _loadedConversationIds.clear();
@@ -214,6 +333,11 @@ class ChatViewModel extends ChangeNotifier {
       _appendMessage(ChatMessage.fromJson(payload));
     } else if (type == 'read_receipt') {
       _applyReadReceipt(ChatMessage.fromJson(payload));
+    } else if (type == 'friend_added') {
+      final currentUser = user;
+      if (currentUser != null) unawaited(refreshRooms());
+    } else if (type == 'group_added') {
+      _handleGroupAdded(payload);
     }
   }
 
@@ -233,21 +357,98 @@ class ChatViewModel extends ChangeNotifier {
     }
 
     _messagesByConversation[message.conversationId] = existingMessages;
-    rooms = rooms.map((room) {
-      if (room.conversationId != message.conversationId) return room;
-      final preview = message.text.isNotEmpty
-          ? message.text
-          : message.hasImageAttachment
-          ? '已傳送圖片'
-          : message.hasAttachment
-          ? '已傳送檔案'
-          : '';
-      return room.copyWith(
-        lastMessage: preview,
-        unreadCount: room.id == activeRoom?.id ? 0 : room.unreadCount + 1,
-      );
-    }).toList();
+    rooms = _sortRooms(
+      rooms.map((room) {
+        if (room.conversationId != message.conversationId) return room;
+        final preview = message.text.isNotEmpty
+            ? message.text
+            : message.hasImageAttachment
+            ? '已傳送圖片'
+            : message.hasAttachment
+            ? '已傳送檔案'
+            : '';
+        return room.copyWith(
+          lastMessage: preview,
+          lastMessageAt: message.sentAt,
+          lastMessageIsSelf: message.isSelf(user?.id ?? ''),
+          lastMessageReadAt: message.readAt,
+          unreadCount: room.id == activeRoom?.id ? 0 : room.unreadCount + 1,
+        );
+      }).toList(),
+    );
     notifyListeners();
+  }
+
+  void _handleGroupAdded(Map<String, dynamic> payload) {
+    final currentUser = user;
+    if (currentUser == null) return;
+
+    final groupId = payload['group_id']?.toString() ?? '';
+    final conversationId = payload['conversation_id']?.toString() ?? '';
+    final name = payload['name']?.toString() ?? '';
+    if (groupId.isEmpty || conversationId.isEmpty || name.isEmpty) return;
+
+    final memberIds = (payload['member_ids'] as List<dynamic>? ?? [])
+        .map((memberId) => memberId.toString())
+        .toList();
+    if (!memberIds.contains(currentUser.id)) return;
+
+    _upsertRoom(
+      ChatRoom(
+        id: groupId,
+        name: name,
+        recipientId: groupId,
+        conversationId: conversationId,
+        memberIds: memberIds,
+        isGroup: true,
+      ),
+    );
+  }
+
+  void _upsertRoom(ChatRoom room) {
+    final existingIndex = rooms.indexWhere((item) => item.id == room.id);
+    if (existingIndex == -1) {
+      rooms = _sortRooms([...rooms, room]);
+      _messagesByConversation.putIfAbsent(room.conversationId, () => []);
+      notifyListeners();
+      return;
+    }
+
+    final existing = rooms[existingIndex];
+    rooms = _sortRooms([
+      ...rooms.take(existingIndex),
+      existing.copyWith(
+        name: room.name,
+        isFriend: existing.isFriend || room.isFriend,
+        isGroup: existing.isGroup || room.isGroup,
+        memberIds: room.memberIds.isEmpty ? existing.memberIds : room.memberIds,
+        online: existing.online || room.online,
+        lastSeen: room.lastSeen ?? existing.lastSeen,
+        lastMessage: room.lastMessage.isEmpty
+            ? existing.lastMessage
+            : room.lastMessage,
+        lastMessageAt: room.lastMessageAt ?? existing.lastMessageAt,
+        lastMessageIsSelf: room.lastMessage.isEmpty
+            ? existing.lastMessageIsSelf
+            : room.lastMessageIsSelf,
+        lastMessageReadAt: room.lastMessageReadAt ?? existing.lastMessageReadAt,
+      ),
+      ...rooms.skip(existingIndex + 1),
+    ]);
+    _messagesByConversation.putIfAbsent(room.conversationId, () => []);
+    notifyListeners();
+  }
+
+  List<ChatRoom> _sortRooms(List<ChatRoom> source) {
+    final sorted = [...source];
+    sorted.sort((a, b) {
+      final aTime = a.lastMessageAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.lastMessageAt?.millisecondsSinceEpoch ?? 0;
+      if (a.id == stockBotId && aTime == 0 && bTime == 0) return -1;
+      if (b.id == stockBotId && aTime == 0 && bTime == 0) return 1;
+      return bTime.compareTo(aTime);
+    });
+    return sorted;
   }
 
   void _applyReadReceipt(ChatMessage receipt) {

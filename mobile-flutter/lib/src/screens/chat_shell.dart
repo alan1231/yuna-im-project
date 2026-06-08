@@ -25,6 +25,11 @@ class ChatShell extends ConsumerWidget {
 
     final colorScheme = Theme.of(context).colorScheme;
     final activeRoom = viewModel.activeRoom;
+    final subtitle = activeRoom?.isGroup == true
+        ? '${activeRoom!.memberIds.length} 位成員'
+        : viewModel.isConnected
+        ? '即時同步'
+        : '連線中斷';
 
     return Scaffold(
       appBar: AppBar(
@@ -52,7 +57,7 @@ class ChatShell extends ConsumerWidget {
                     ),
                   ),
                   Text(
-                    viewModel.isConnected ? '即時同步' : '連線中斷',
+                    subtitle,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -63,6 +68,12 @@ class ChatShell extends ConsumerWidget {
           ],
         ),
         actions: [
+          if (activeRoom?.isGroup == true)
+            IconButton(
+              tooltip: '離開群組',
+              onPressed: () => viewModel.leaveGroup(activeRoom!),
+              icon: const Icon(Icons.logout),
+            ),
           IconButton(
             tooltip: '登出',
             onPressed: viewModel.logout,
