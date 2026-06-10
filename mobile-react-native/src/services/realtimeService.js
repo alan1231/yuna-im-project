@@ -6,9 +6,6 @@ export function connectRealtime({ profile, room, onEvent, onDisconnected }) {
   )}&conversation_id=${encodeURIComponent(room.conversationId)}`
   const socket = new WebSocket(url)
 
-  socket.onopen = () => {
-    sendActiveConversation(socket, room.conversationId)
-  }
   socket.onclose = onDisconnected
   socket.onerror = onDisconnected
   socket.onmessage = (event) => {
@@ -23,7 +20,7 @@ export function sendActiveConversation(socket, conversationId) {
   socket.send(JSON.stringify({ type: 'active_conversation', conversation_id: conversationId }))
 }
 
-export function sendRealtimeMessage(socket, { profile, room, text }) {
+export function sendRealtimeMessage(socket, { profile, room, text, attachment }) {
   socket.send(
     JSON.stringify({
       sender: profile.displayName,
@@ -31,10 +28,10 @@ export function sendRealtimeMessage(socket, { profile, room, text }) {
       recipient_id: room.recipientId,
       conversation_id: room.conversationId,
       text,
-      attachment_url: '',
-      attachment_name: '',
-      attachment_type: '',
-      attachment_size: 0,
+      attachment_url: attachment?.url || '',
+      attachment_name: attachment?.name || '',
+      attachment_type: attachment?.type || '',
+      attachment_size: attachment?.size || 0,
     }),
   )
 }

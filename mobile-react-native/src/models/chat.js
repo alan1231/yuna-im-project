@@ -30,9 +30,36 @@ export function normalizeFriend(rawFriend, profile) {
     conversationId: conversationIdFor(profile.id, friendId),
     online: rawFriend.online === true,
     isFriend: true,
+    isGroup: false,
     lastMessage: '',
     unreadCount: 0,
     lastSeen: parseDate(rawFriend.last_seen),
+  }
+}
+
+export function normalizeFriendRequest(rawRequest) {
+  return {
+    id: String(rawRequest.request_id || ''),
+    fromUserId: String(rawRequest.from_user_id || ''),
+    fromDisplayName: String(rawRequest.from_display_name || ''),
+    createdAt: parseDate(rawRequest.created_at),
+  }
+}
+
+export function normalizeGroup(rawGroup) {
+  const groupId = String(rawGroup.group_id || '')
+  return {
+    id: groupId,
+    name: String(rawGroup.name || groupId),
+    recipientId: groupId,
+    conversationId: String(rawGroup.conversation_id || ''),
+    isFriend: false,
+    isGroup: true,
+    memberIds: Array.isArray(rawGroup.member_ids)
+      ? rawGroup.member_ids.map((item) => String(item))
+      : [],
+    lastMessage: '',
+    unreadCount: 0,
   }
 }
 
@@ -49,9 +76,13 @@ export function normalizeConversation(rawConversation, profile) {
     lastMessage: String(rawConversation.last_message || ''),
     lastMessageAt: parseDate(rawConversation.last_message_at),
     lastMessageIsSelf: rawConversation.last_message_sender_id === profile.id,
+    lastMessageReadAt: parseDate(rawConversation.last_message_read_at),
     unreadCount: Number(rawConversation.unread_count || 0),
     isFriend: rawConversation.is_friend === true,
     isGroup: rawConversation.is_group === true,
+    memberIds: Array.isArray(rawConversation.member_ids)
+      ? rawConversation.member_ids.map((item) => String(item))
+      : [],
   }
 }
 
@@ -66,7 +97,12 @@ export function normalizeMessage(rawMessage) {
       rawMessage.conversation_id || conversationIdFor(senderId, recipientId),
     ),
     text: String(rawMessage.text || ''),
+    attachmentUrl: String(rawMessage.attachment_url || rawMessage.image_url || ''),
+    attachmentName: String(rawMessage.attachment_name || rawMessage.image_name || ''),
+    attachmentType: String(rawMessage.attachment_type || rawMessage.image_type || ''),
+    attachmentSize: Number(rawMessage.attachment_size || rawMessage.image_size || 0),
     sentAt: parseDate(rawMessage.time || rawMessage.sent_at) || new Date(),
+    readAt: parseDate(rawMessage.read_at),
   }
 }
 
@@ -77,8 +113,11 @@ export function mergeRoom(existing, room) {
     ...room,
     isFriend: existing.isFriend || room.isFriend,
     online: existing.online || room.online,
+    isGroup: existing.isGroup || room.isGroup,
+    memberIds: room.memberIds || existing.memberIds || [],
     lastMessage: room.lastMessage || existing.lastMessage,
     lastMessageAt: room.lastMessageAt || existing.lastMessageAt,
+    lastMessageReadAt: room.lastMessageReadAt || existing.lastMessageReadAt,
   }
 }
 
@@ -102,8 +141,11 @@ export function messageKey(message) {
   return [
     message.senderId,
     message.recipientId,
+    message.conversationId,
     message.sentAt.toISOString(),
     message.text,
+    message.attachmentName,
+    message.attachmentSize,
   ].join('|')
 }
 
@@ -120,4 +162,14 @@ export function formatRoomTime(value) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+export function formatFileSize(size) {
+  const numericSize = Number(size || 0)
+  if (!numericSize) return ''
+  if (numericSize < 1024) return `${numericSize} B`
+  const sizeKb = numericSize / 1024
+  if (sizeKb < 1024) return `${sizeKb.toFixed(sizeKb >= 100 ? 0 : 1)} KB`
+  const sizeMb = sizeKb / 1024
+  return `${sizeMb.toFixed(sizeMb >= 100 ? 0 : 1)} MB`
 }
