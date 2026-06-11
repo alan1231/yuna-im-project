@@ -15,6 +15,7 @@ export function Composer({
   variant = 'chat',
 }) {
   const [text, setText] = useState('')
+  const isStockComposer = variant === 'stock'
 
   const submit = async () => {
     const shouldClear = await Promise.resolve(onSend(text))
@@ -25,52 +26,65 @@ export function Composer({
 
   return (
     <View style={styles.composerShell}>
-      {attachment ? (
-        <View style={styles.attachmentPreview}>
-          {hasImageAttachment ? (
-            <Image source={{ uri: attachment.url }} style={styles.attachmentPreviewImage} />
-          ) : (
-            <View style={styles.attachmentPreviewIcon}>
-              <Text style={styles.attachmentPreviewIconText}>檔</Text>
-            </View>
-          )}
-          <View style={styles.attachmentPreviewBody}>
-            <Text numberOfLines={1} style={styles.attachmentPreviewName}>
-              {attachment.name}
-            </Text>
-            <Text style={styles.attachmentPreviewMeta}>
-              {isPreparingAttachment
-                ? '附件處理中...'
-                : attachment.wasCompressed
-                  ? `${formatFileSize(attachment.size) || '待傳送附件'} · 已壓縮`
-                  : formatFileSize(attachment.size) || '待傳送附件'}
-            </Text>
-          </View>
-          <Pressable onPress={onClearAttachment} style={styles.attachmentRemoveButton}>
-            <Text style={styles.attachmentRemoveButtonText}>×</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
       <View style={styles.composer}>
+        <View style={styles.composerInputStack}>
+          {attachment ? (
+            <View style={styles.attachmentPreview}>
+              {hasImageAttachment ? (
+                <Image source={{ uri: attachment.url }} style={styles.attachmentPreviewImage} />
+              ) : (
+                <View style={styles.attachmentPreviewIcon}>
+                  <Text style={styles.attachmentPreviewIconText}>檔</Text>
+                </View>
+              )}
+              <View style={styles.attachmentPreviewBody}>
+                <Text numberOfLines={1} style={styles.attachmentPreviewName}>
+                  {attachment.name}
+                </Text>
+                <Text style={styles.attachmentPreviewMeta}>
+                  {isPreparingAttachment
+                    ? '附件處理中...'
+                    : attachment.wasCompressed
+                      ? `${formatFileSize(attachment.size) || '待傳送附件'} · 已壓縮`
+                      : formatFileSize(attachment.size) || '待傳送附件'}
+                </Text>
+              </View>
+              <Pressable onPress={onClearAttachment} style={styles.attachmentRemoveButton}>
+                <Text style={styles.attachmentRemoveButtonText}>×</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {isPreparingAttachment ? (
+            <Text style={styles.composerStatus}>正在處理附件...</Text>
+          ) : null}
+
+          <TextInput
+            editable={!disabled}
+            multiline
+            onChangeText={setText}
+            onSubmitEditing={submit}
+            placeholder={isPreparingAttachment ? '正在處理附件...' : placeholder}
+            placeholderTextColor="#8a8f91"
+            style={styles.composerInput}
+            value={text}
+          />
+        </View>
+
         <Pressable
+          accessibilityLabel="選擇附件"
           disabled={disabled}
           onPress={onAttachPress}
-          style={[styles.attachButton, disabled && styles.disabledSendButton]}
+          style={[
+            styles.attachButton,
+            isStockComposer && styles.attachButtonHidden,
+            disabled && styles.disabledSendButton,
+          ]}
         >
           <Text style={styles.attachButtonText}>{isPreparingAttachment ? '…' : '＋'}</Text>
         </Pressable>
-        <TextInput
-          editable={!disabled}
-          multiline
-          onChangeText={setText}
-          onSubmitEditing={submit}
-          placeholder={isPreparingAttachment ? '正在處理附件...' : placeholder}
-          placeholderTextColor="#8a8f91"
-          style={styles.composerInput}
-          value={text}
-        />
         <Pressable
+          accessibilityLabel={sendLabel}
           disabled={disabled || (!text.trim() && !attachment)}
           onPress={submit}
           style={[
@@ -79,7 +93,8 @@ export function Composer({
             (disabled || (!text.trim() && !attachment)) && styles.disabledSendButton,
           ]}
         >
-          <Text style={styles.sendButtonText}>{sendLabel}</Text>
+          <Text style={styles.sendButtonIcon}>{isStockComposer ? '⌕' : '↑'}</Text>
+          {isStockComposer ? <Text style={styles.sendButtonText}>{sendLabel}</Text> : null}
         </Pressable>
       </View>
     </View>

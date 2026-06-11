@@ -1,18 +1,4 @@
 {
-  "expo": {
-    "name": "Yuna IM",
-    "slug": "yuna-im-mobile-react-native",
-    "version": "0.1.0",
-    "orientation": "portrait",
-    "scheme": "yunaim",
-    "userInterfaceStyle": "light",
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#f7f3ee"
-      }
-    }
-  }
+  "name": "YunaIM",
+  "displayName": "Yuna IM"
 }

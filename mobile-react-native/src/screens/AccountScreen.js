@@ -20,7 +20,6 @@ export function AccountScreen({ error, isSubmitting, onSubmit }) {
             <Text style={styles.featurePill}>即時</Text>
           </View>
         </View>
-
         <View style={styles.accountPanel}>
           <View style={styles.accountPanelHeading}>
             <Text style={styles.panelKicker}>START</Text>
@@ -88,7 +87,7 @@ export function AccountScreen({ error, isSubmitting, onSubmit }) {
               style={[
                 styles.accountSubmitText,
                 (isSubmitting || !displayName.trim()) &&
-                  styles.accountSubmitDisabledText,
+                styles.accountSubmitDisabledText,
               ]}
             >
               {isSubmitting

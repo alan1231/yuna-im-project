@@ -152,14 +152,14 @@ export function MessageBubble({
         ) : null}
         {!isPending ? (
           <View style={styles.messageFooter}>
+            <Text style={[styles.timeText, isSelf && styles.selfTimeText]}>
+              {formatTime(message.sentAt)}
+            </Text>
             {isSelf ? (
               <Text style={[styles.readReceiptText, message.readAt && styles.readReceiptTextRead]}>
                 {message.readAt ? '已讀' : '送達'}
               </Text>
             ) : null}
-            <Text style={[styles.timeText, isSelf && styles.selfTimeText]}>
-              {formatTime(message.sentAt)}
-            </Text>
           </View>
         ) : null}
       </View>

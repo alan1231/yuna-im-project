@@ -46,6 +46,7 @@ export function ChatScreen({
   availableUsers,
   clearAttachment,
   connectionError,
+  connectionState,
   currentUserId,
   error,
   friendRequests,
@@ -71,6 +72,7 @@ export function ChatScreen({
   onStartChatWithUser,
   onWakeBackend,
   profile,
+  reconnectAttempt,
   rooms,
 }) {
   const [previewImage, setPreviewImage] = useState(null)
@@ -157,14 +159,13 @@ export function ChatScreen({
             </Text>
             <Text style={styles.headerTitle}>{activeRoom?.name || 'Yuna IM'}</Text>
             {activeRoom?.isGroup && memberNames.length ? (
-              <Pressable
+              <Text
+                numberOfLines={1}
                 onPress={() => setIsMemberSheetOpen(true)}
-                style={styles.memberSummaryButton}
+                style={styles.chatSubtitle}
               >
-                <Text numberOfLines={1} style={styles.roomScreenSubtitle}>
-                  {memberNames.join('、')}
-                </Text>
-              </Pressable>
+                {memberNames.join('、')}
+              </Text>
             ) : null}
           </View>
         </View>
@@ -176,16 +177,17 @@ export function ChatScreen({
                 isConnected && styles.statusConnectedText,
               ]}
             >
-              {isConnected ? '已連線' : '離線'}
+              {isConnected
+                ? '已連線'
+                : connectionState === 'waking'
+                  ? '喚醒中'
+                  : connectionState === 'reconnecting'
+                    ? `重連中 ${reconnectAttempt || ''}`.trim()
+                    : connectionState === 'connecting'
+                      ? '連線中'
+                      : '離線'}
             </Text>
           </View>
-          {!isConnected ? (
-            <Pressable onPress={onWakeBackend} style={styles.headerButton}>
-              <Text style={styles.headerButtonText}>
-                {isWakingBackend ? '喚醒中' : '喚醒'}
-              </Text>
-            </Pressable>
-          ) : null}
           {activeRoom?.isGroup ? (
             <Pressable
               onPress={() => onLeaveGroup(activeRoom.id)}
@@ -306,8 +308,9 @@ export function ChatScreen({
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>還沒有訊息</Text>
-              <Text style={styles.emptyText}>傳送第一則訊息開始對話。</Text>
+              <Text style={styles.emptyText}>
+                {activeRoom?.description || '傳送第一則訊息開始對話。'}
+              </Text>
             </View>
           )
         }

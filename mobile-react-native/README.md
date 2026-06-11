@@ -44,14 +44,23 @@ https://yuna-im-project.onrender.com
 To use a local backend instead, point the app at the computer's LAN IP:
 
 ```bash
-EXPO_PUBLIC_API_HOST=192.168.0.71 npm start
+cp src/config/runtime.local.example.js src/config/runtime.local.js
 ```
 
-Optional env vars:
+Then edit `src/config/runtime.local.js`:
 
-- `EXPO_PUBLIC_API_URL`, full HTTP API URL
-- `EXPO_PUBLIC_WS_URL`, full WebSocket URL ending in `/ws`
-- `EXPO_PUBLIC_API_HOST`, local host override used to build `http://<host>:<port>`
-- `EXPO_PUBLIC_API_PORT`, default `8080`
+```js
+module.exports = {
+  apiHost: '192.168.0.71',
+  apiPort: '8080',
+}
+```
 
-Android emulator note: use `EXPO_PUBLIC_API_HOST=10.0.2.2` when the Go backend runs on the host machine.
+Optional overrides:
+
+- `apiBaseUrl`, full HTTP API URL
+- `wsBaseUrl`, full WebSocket URL ending in `/ws`
+- `apiHost`, local host override used to build `http://<host>:<port>`
+- `apiPort`, default `8080`
+
+Android emulator note: use `apiHost: '10.0.2.2'` when the Go backend runs on the host machine.

@@ -123,5 +123,14 @@ https://yuna-im-project.onrender.com
 若要改用本機 Go 後端，請把 API host 指到電腦在同一個 Wi-Fi 內的 IP：
 
 ```bash
-EXPO_PUBLIC_API_HOST=192.168.0.71 npm start
+cp mobile-react-native/src/config/runtime.local.example.js mobile-react-native/src/config/runtime.local.js
+```
+
+接著在 `mobile-react-native/src/config/runtime.local.js` 填入：
+
+```js
+module.exports = {
+  apiHost: '192.168.0.71',
+  apiPort: '8080',
+}
 ```

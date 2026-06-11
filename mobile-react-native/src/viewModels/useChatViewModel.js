@@ -1,4 +1,10 @@
-import * as DocumentPicker from 'expo-document-picker'
+import {
+  errorCodes as documentPickerErrorCodes,
+  isErrorWithCode as isDocumentPickerErrorWithCode,
+  keepLocalCopy,
+  pick,
+  types as documentPickerTypes,
+} from '@react-native-documents/picker'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { maxCachedMessagesPerConversation, stockBotId, stockBotName } from '../config/runtime'
 import {
@@ -39,6 +45,7 @@ import {
 } from '../services/realtimeService'
 
 const stockBotPendingId = 'stock-bot-pending'
+const reconnectBackoffMs = [1000, 2000, 5000, 8000]
 
 function createStockRoom(profile) {
   return {
@@ -70,14 +77,22 @@ export function useChatViewModel() {
   const [isConnected, setIsConnected] = useState(false)
   const [attachment, setAttachment] = useState(null)
   const [isPreparingAttachment, setIsPreparingAttachment] = useState(false)
+  const [connectionState, setConnectionState] = useState('idle')
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
   const [accountError, setAccountError] = useState('')
   const [roomError, setRoomError] = useState('')
   const [connectionError, setConnectionError] = useState('')
   const socketRef = useRef(null)
+  const connectSocketRef = useRef(null)
   const activeRoomIdRef = useRef('')
   const eventHandlerRef = useRef(null)
   const loadedConversationIdsRef = useRef(new Set())
   const profileRef = useRef(null)
+  const roomsRef = useRef([])
+  const reconnectTimerRef = useRef(null)
+  const shouldReconnectRef = useRef(true)
+  const isWakingBackendRef = useRef(false)
+  const reconnectAttemptRef = useRef(0)
 
   const activeRoom = useMemo(
     () => rooms.find((room) => room.id === activeRoomId) || rooms[0] || null,
@@ -99,8 +114,20 @@ export function useChatViewModel() {
   }, [profile])
 
   useEffect(() => {
+    isWakingBackendRef.current = isWakingBackend
+  }, [isWakingBackend])
+
+  useEffect(() => {
+    roomsRef.current = rooms
+  }, [rooms])
+
+  useEffect(() => {
     loadedConversationIdsRef.current = loadedConversationIds
   }, [loadedConversationIds])
+
+  useEffect(() => {
+    reconnectAttemptRef.current = reconnectAttempt
+  }, [reconnectAttempt])
 
   const loadMessagesForRoom = useCallback(async (currentProfile, room) => {
     if (!room?.conversationId) return
@@ -189,8 +216,56 @@ export function useChatViewModel() {
     )
   }, [])
 
-  const connectSocket = useCallback((currentProfile, room) => {
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+  }, [])
+
+  const getReconnectRoom = useCallback(() => {
+    const currentRooms = roomsRef.current
+    const activeRoom =
+      currentRooms.find((room) => room.id === activeRoomIdRef.current) || currentRooms[0]
+    return activeRoom || (profileRef.current ? createStockRoom(profileRef.current) : null)
+  }, [])
+
+  const disconnectSocket = useCallback(({ allowReconnect = false } = {}) => {
+    shouldReconnectRef.current = allowReconnect
+    clearReconnectTimer()
     closeRealtime(socketRef)
+  }, [clearReconnectTimer])
+
+  const scheduleReconnect = useCallback((reason = '連線中斷，正在重新連線。') => {
+    if (!profileRef.current || isWakingBackendRef.current) return
+    if (reconnectTimerRef.current) return
+
+    setIsConnected(false)
+    setConnectionState('reconnecting')
+    setReconnectAttempt((currentAttempt) => {
+      const nextAttempt = currentAttempt + 1
+      const delay =
+        reconnectBackoffMs[Math.min(nextAttempt - 1, reconnectBackoffMs.length - 1)]
+      setConnectionError(`${reason} 第 ${nextAttempt} 次重試將在 ${Math.round(delay / 1000)} 秒後進行。`)
+
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null
+        const currentProfile = profileRef.current
+        const room = getReconnectRoom()
+        if (!currentProfile || !room) return
+        connectSocketRef.current?.(currentProfile, room)
+      }, delay)
+
+      return nextAttempt
+    })
+  }, [getReconnectRoom])
+
+  const connectSocket = useCallback((currentProfile, room) => {
+    shouldReconnectRef.current = false
+    clearReconnectTimer()
+    closeRealtime(socketRef)
+    shouldReconnectRef.current = true
+    setConnectionState(reconnectAttemptRef.current > 0 ? 'reconnecting' : 'connecting')
 
     try {
       const socket = connectRealtime({
@@ -199,20 +274,31 @@ export function useChatViewModel() {
         onEvent: (...args) => eventHandlerRef.current?.(...args),
         onDisconnected: () => {
           setIsConnected(false)
-          setConnectionError('連線中斷，請重新連線或喚醒後端。')
+          if (shouldReconnectRef.current) {
+            scheduleReconnect()
+          } else {
+            setConnectionState('idle')
+          }
         },
       })
       socketRef.current = socket
       socket.onopen = () => {
         setIsConnected(true)
+        setConnectionState('connected')
+        setReconnectAttempt(0)
         setConnectionError('')
         sendActiveConversation(socket, room.conversationId)
       }
+      socket.onerror = () => {
+        setConnectionError('WebSocket 連線失敗，正在嘗試重新連線。')
+      }
     } catch {
-      setConnectionError('WebSocket 連線失敗。')
+      scheduleReconnect('WebSocket 連線失敗，正在重新連線。')
       setIsConnected(false)
     }
-  }, [])
+  }, [clearReconnectTimer, scheduleReconnect])
+
+  connectSocketRef.current = connectSocket
 
   const loadInitialChat = useCallback(
     async (currentProfile) => {
@@ -238,15 +324,22 @@ export function useChatViewModel() {
           merged.set(room.id, mergeRoom(existing, room))
         })
 
-        setRooms(sortRooms([...merged.values()], stockBotId))
+        const sortedRooms = sortRooms([...merged.values()], stockBotId)
+        const resolvedActiveRoomId = merged.has(activeRoomIdRef.current)
+          ? activeRoomIdRef.current
+          : stockRoom.id
+        const activeSocketRoom =
+          sortedRooms.find((item) => item.id === resolvedActiveRoomId) || stockRoom
+
+        setRooms(sortedRooms)
         setAvailableUsers(users)
         setFriendRequests(requests)
         setConnectionError('')
-        setActiveRoomId((currentRoomId) =>
-          merged.has(currentRoomId) ? currentRoomId : stockRoom.id,
-        )
-        await loadMessagesForRoom(currentProfile, stockRoom)
-        connectSocket(currentProfile, stockRoom)
+        setConnectionState('connecting')
+        setReconnectAttempt(0)
+        setActiveRoomId(resolvedActiveRoomId)
+        await loadMessagesForRoom(currentProfile, activeSocketRoom)
+        connectSocket(currentProfile, activeSocketRoom)
       } catch {
         setRoomError('聊天資料載入失敗，請稍後再試。')
       } finally {
@@ -294,9 +387,9 @@ export function useChatViewModel() {
 
     return () => {
       mounted = false
-      closeRealtime(socketRef)
+      disconnectSocket({ allowReconnect: false })
     }
-  }, [loadInitialChat])
+  }, [disconnectSocket, loadInitialChat])
 
   const createOrLogin = async (displayName, create) => {
     const name = displayName.trim()
@@ -356,18 +449,24 @@ export function useChatViewModel() {
     if (!profileRef.current || isWakingBackend) return false
 
     setIsWakingBackend(true)
+    setConnectionState('waking')
+    setConnectionError('正在喚醒後端並重新建立連線。')
+    clearReconnectTimer()
     try {
       await wakeBackend()
       await loadInitialChat(profileRef.current)
       setConnectionError('')
+      setConnectionState('connected')
+      setReconnectAttempt(0)
       return true
     } catch {
       setConnectionError('後端尚未就緒，請稍後再試。')
+      setConnectionState('disconnected')
       return false
     } finally {
       setIsWakingBackend(false)
     }
-  }, [isWakingBackend, loadInitialChat])
+  }, [clearReconnectTimer, isWakingBackend, loadInitialChat])
 
   const sendMessage = async (text) => {
     const trimmed = text.trim()
@@ -383,7 +482,7 @@ export function useChatViewModel() {
     }
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
       setConnectionError('WebSocket 尚未連線，正在嘗試重新連線。')
-      await wakeAndReload()
+      scheduleReconnect('WebSocket 尚未連線，正在重新連線。')
       return false
     }
 
@@ -428,19 +527,44 @@ export function useChatViewModel() {
 
     try {
       setIsPreparingAttachment(true)
-      const result = await DocumentPicker.getDocumentAsync({
-        multiple: false,
-        copyToCacheDirectory: true,
-        type: '*/*',
+      const [result] = await pick({
+        mode: 'open',
+        type: [documentPickerTypes.allFiles],
       })
-      if (result.canceled) return
-
-      const asset = result.assets?.[0]
-      if (!asset?.uri) return
+      const [copiedFile] = await keepLocalCopy({
+        destination: 'cachesDirectory',
+        files: [
+          {
+            uri: result.uri,
+            fileName: result.name || 'attachment',
+            ...(result.isVirtual && result.convertibleToMimeTypes?.[0]?.mimeType
+              ? {
+                  convertVirtualFileToType:
+                    result.convertibleToMimeTypes[0].mimeType,
+                }
+              : {}),
+          },
+        ],
+      })
+      const localUri =
+        copiedFile?.status === 'success' ? copiedFile.localUri : result.uri
+      const asset = {
+        uri: localUri,
+        name: result.name || 'attachment',
+        mimeType: result.type || 'application/octet-stream',
+        size: result.size || undefined,
+      }
+      if (!asset.uri) return
       const nextAttachment = await prepareAttachment(asset)
       setAttachment(nextAttachment)
       setRoomError('')
     } catch (attachmentError) {
+      if (
+        isDocumentPickerErrorWithCode(attachmentError) &&
+        attachmentError.code === documentPickerErrorCodes.OPERATION_CANCELED
+      ) {
+        return
+      }
       setRoomError(attachmentError.message || `附件需小於 ${Math.round(maxAttachmentBytes / 1024 / 1024)} MB。`)
     } finally {
       setIsPreparingAttachment(false)
@@ -557,7 +681,7 @@ export function useChatViewModel() {
 
   const logout = async () => {
     await clearProfile()
-    closeRealtime(socketRef)
+    disconnectSocket({ allowReconnect: false })
     setProfile(null)
     setRooms([])
     setAvailableUsers([])
@@ -572,6 +696,8 @@ export function useChatViewModel() {
     setLoadedConversationIds(emptyLoadedConversationIds)
     setIsConnected(false)
     setIsWakingBackend(false)
+    setConnectionState('idle')
+    setReconnectAttempt(0)
     setAccountError('')
     setRoomError('')
     setConnectionError('')
@@ -589,6 +715,7 @@ export function useChatViewModel() {
     attachment,
     availableUsers,
     connectionError,
+    connectionState,
     createOrLogin,
     createGroup: submitCreateGroup,
     deleteFriend: submitDeleteFriend,
@@ -607,6 +734,7 @@ export function useChatViewModel() {
     openMessageAttachment,
     pickAttachment,
     profile,
+    reconnectAttempt,
     refreshRooms,
     respondToFriendRequest: answerFriendRequest,
     roomError,

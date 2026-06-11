@@ -181,7 +181,10 @@ export function RoomListScreen({
 
               <View style={styles.drawerMenu}>
                 <Pressable
-                  onPress={() => setDrawerView('contacts')}
+                  onPress={() => {
+                    setDrawerView('contacts')
+                    onRefreshRooms()
+                  }}
                   style={styles.drawerMenuItem}
                 >
                   <Text style={styles.drawerMenuIcon}>◎</Text>
@@ -193,16 +196,6 @@ export function RoomListScreen({
                 >
                   <Text style={styles.drawerMenuIcon}>#</Text>
                   <Text style={styles.drawerMenuLabel}>建立群組</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    closeDrawer()
-                    onRefreshRooms()
-                  }}
-                  style={styles.drawerMenuItem}
-                >
-                  <Text style={styles.drawerMenuIcon}>↻</Text>
-                  <Text style={styles.drawerMenuLabel}>刷新聊天室</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -518,13 +511,6 @@ export function RoomListScreen({
         data={[...visibleRooms, ...visibleUsers.map(userToRoomListCandidate)]}
         keyExtractor={(item) => item.listKey || `room:${item.id}`}
         contentContainerStyle={styles.roomList}
-        ListHeaderComponent={
-          <Pressable onPress={onRefreshRooms} style={styles.refreshRow}>
-            <Text style={styles.refreshRowText}>
-              {isLoadingChat ? '正在刷新...' : '刷新聊天室'}
-            </Text>
-          </Pressable>
-        }
         ListEmptyComponent={
           <Text style={styles.emptyMenu}>
             {normalizedSearch ? '找不到符合的聊天室。' : '目前沒有聊天室。'}

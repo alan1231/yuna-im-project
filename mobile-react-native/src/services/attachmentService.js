@@ -1,7 +1,7 @@
-import * as FileSystem from 'expo-file-system'
-import * as ImageManipulator from 'expo-image-manipulator'
-import * as Sharing from 'expo-sharing'
+import ImageResizer from '@bam.tech/react-native-image-resizer'
 import { Image } from 'react-native'
+import RNFS from 'react-native-fs'
+import Share from 'react-native-share'
 
 const maxAttachmentBytes = 2 * 1024 * 1024
 const imageCompressionQualities = [0.82, 0.72, 0.6, 0.48, 0.36]
@@ -24,18 +24,16 @@ function stripDataUrlPrefix(value) {
 
 function buildCacheFileUri(fileName) {
   const safeName = String(fileName || 'attachment').replace(/[^a-zA-Z0-9._-]/g, '_')
-  return `${FileSystem.cacheDirectory}${Date.now()}-${safeName}`
+  return `${RNFS.CachesDirectoryPath}/${Date.now()}-${safeName}`
 }
 
 async function fileSize(uri) {
-  const info = await FileSystem.getInfoAsync(uri)
-  return info.exists ? Number(info.size || 0) : 0
+  const info = await RNFS.stat(uri)
+  return Number(info.size || 0)
 }
 
 async function toDataUrl(uri, mimeType) {
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
+  const base64 = await RNFS.readFile(uri, 'base64')
   return `data:${mimeType};base64,${base64}`
 }
 
@@ -53,22 +51,25 @@ async function compressImage(asset) {
   let candidateSize = asset.size || (await fileSize(asset.uri))
 
   for (const compress of imageCompressionQualities) {
-    const result = await ImageManipulator.manipulateAsync(
+    const result = await ImageResizer.createResizedImage(
       asset.uri,
-      resizeAction ? [resizeAction] : [],
-      {
-        compress,
-        format: ImageManipulator.SaveFormat.JPEG,
-      },
+      resizeAction?.resize?.width || imageSize.width || maxImageDimension,
+      resizeAction?.resize?.height || imageSize.height || maxImageDimension,
+      'JPEG',
+      Math.round(compress * 100),
+      0,
+      undefined,
+      false,
+      { mode: 'contain', onlyScaleDown: true },
     )
-    candidateUri = result.uri
-    candidateSize = await fileSize(result.uri)
+    candidateUri = result.path || result.uri
+    candidateSize = Number(result.size || (await fileSize(candidateUri)))
     if (candidateSize <= maxAttachmentBytes) {
       return {
-        uri: result.uri,
+        uri: candidateUri,
         size: candidateSize,
         type: 'image/jpeg',
-        wasCompressed: result.uri !== asset.uri || compress !== 1,
+        wasCompressed: candidateUri !== asset.uri || compress !== 1,
       }
     }
   }
@@ -121,17 +122,16 @@ export async function prepareAttachment(asset) {
 
 export async function shareAttachment({ attachmentName, attachmentType, attachmentUrl }) {
   if (!attachmentUrl) throw new Error('找不到附件內容。')
-  const canShare = await Sharing.isAvailableAsync()
-  if (!canShare) throw new Error('這台裝置不支援分享附件。')
 
-  const targetUri = buildCacheFileUri(attachmentName)
-  await FileSystem.writeAsStringAsync(targetUri, stripDataUrlPrefix(attachmentUrl), {
-    encoding: FileSystem.EncodingType.Base64,
-  })
-  await Sharing.shareAsync(targetUri, {
-    mimeType: attachmentType || 'application/octet-stream',
-    dialogTitle: attachmentName || '分享附件',
-    UTI: attachmentType || undefined,
+  const targetPath = buildCacheFileUri(attachmentName)
+  await RNFS.writeFile(targetPath, stripDataUrlPrefix(attachmentUrl), 'base64')
+  await Share.open({
+    url: `file://${targetPath}`,
+    type: attachmentType || 'application/octet-stream',
+    filename: attachmentName || 'attachment',
+    title: attachmentName || '分享附件',
+    failOnCancel: false,
+    saveToFiles: true,
   })
 }
 

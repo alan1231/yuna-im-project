@@ -14,6 +14,7 @@ export default function App() {
     availableUsers,
     clearAttachment,
     connectionError,
+    connectionState,
     createOrLogin,
     createGroup,
     deleteFriend,
@@ -32,6 +33,7 @@ export default function App() {
     openMessageAttachment,
     pickAttachment,
     profile,
+    reconnectAttempt,
     refreshRooms,
     respondToFriendRequest,
     roomError,
@@ -67,6 +69,7 @@ export default function App() {
             availableUsers={availableUsers}
             clearAttachment={clearAttachment}
             connectionError={connectionError}
+            connectionState={connectionState}
             currentUserId={profile.id}
             friendRequests={friendRequests}
             error={roomError}
@@ -92,6 +95,7 @@ export default function App() {
             onStartChatWithUser={startChatWithUser}
             onWakeBackend={wakeAndReload}
             profile={profile}
+            reconnectAttempt={reconnectAttempt}
             rooms={rooms}
           />
         </KeyboardAvoidingView>
