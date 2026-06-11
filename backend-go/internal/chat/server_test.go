@@ -52,6 +52,9 @@ func TestIsOriginAllowed(t *testing.T) {
 	if !isOriginAllowed("react-native://localhost") {
 		t.Fatal("expected React Native scheme origin to be allowed")
 	}
+	if !isOriginAllowed("file://") {
+		t.Fatal("expected native file origin to be allowed")
+	}
 	if isOriginAllowed("https://evil.example") {
 		t.Fatal("did not expect unconfigured origin to be allowed")
 	}
