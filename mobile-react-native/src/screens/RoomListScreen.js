@@ -18,6 +18,7 @@ export function RoomListScreen({
   activeRoomId,
   availableUsers,
   connectionError,
+  connectionLabel,
   error,
   friendRequests,
   isConnected,
@@ -498,7 +499,7 @@ export function RoomListScreen({
               isConnected && styles.statusConnectedText,
             ]}
           >
-            {isConnected ? '已連線' : '離線'}
+            {connectionLabel}
           </Text>
         </View>
       </View>

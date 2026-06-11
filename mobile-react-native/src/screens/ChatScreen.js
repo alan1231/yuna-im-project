@@ -39,6 +39,14 @@ function formatDateLabel(value) {
   })
 }
 
+function connectionLabel(isConnected, connectionState) {
+  if (isConnected) return '已連線'
+  if (connectionState === 'connecting') return '連線中'
+  if (connectionState === 'reconnecting') return '重連中'
+  if (connectionState === 'waking') return '喚醒中'
+  return '離線'
+}
+
 export function ChatScreen({
   activeMessages,
   activeRoom,
@@ -76,6 +84,7 @@ export function ChatScreen({
 }) {
   const [previewImage, setPreviewImage] = useState(null)
   const [isMemberSheetOpen, setIsMemberSheetOpen] = useState(false)
+  const realtimeLabel = connectionLabel(isConnected, connectionState)
 
   const memberNames = useMemo(() => {
     if (!activeRoom?.isGroup) return []
@@ -119,6 +128,7 @@ export function ChatScreen({
           activeRoomId={activeRoom?.id || ''}
           availableUsers={availableUsers}
           connectionError={connectionError}
+          connectionLabel={realtimeLabel}
           isConnected={isConnected}
           isWakingBackend={isWakingBackend}
           error={error}
@@ -180,9 +190,7 @@ export function ChatScreen({
                 isConnected && styles.statusConnectedText,
               ]}
             >
-              {isConnected
-                ? '已連線'
-                : '離線'}
+              {realtimeLabel}
             </Text>
           </View>
           {activeRoom?.isGroup ? (
