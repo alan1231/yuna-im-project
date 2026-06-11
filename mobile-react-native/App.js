@@ -1,9 +1,11 @@
-import { KeyboardAvoidingView, Platform, SafeAreaView, StatusBar } from 'react-native'
+import { KeyboardAvoidingView, LogBox, Platform, SafeAreaView, StatusBar } from 'react-native'
 import { LoadingScreen } from './src/components/LoadingScreen'
 import { AccountScreen } from './src/screens/AccountScreen'
 import { ChatScreen } from './src/screens/ChatScreen'
 import { styles } from './src/styles/appStyles'
 import { useChatViewModel } from './src/viewModels/useChatViewModel'
+
+LogBox.ignoreAllLogs()
 
 export default function App() {
   const {

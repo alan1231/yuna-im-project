@@ -1,16 +1,27 @@
 import { wsBaseUrl } from '../config/runtime'
 
-export function connectRealtime({ profile, room, onEvent, onDisconnected }) {
+export function connectRealtime({ profile, room, onEvent, onOpen, onClose, onError }) {
   const url = `${wsBaseUrl}?user_id=${encodeURIComponent(
     profile.id,
   )}&conversation_id=${encodeURIComponent(room.conversationId)}`
   const socket = new WebSocket(url)
 
-  socket.onclose = onDisconnected
-  socket.onerror = onDisconnected
+  socket.onopen = () => onOpen?.({ url })
+  socket.onclose = (event) =>
+    onClose?.({
+      url,
+      code: event?.code,
+      reason: event?.reason || '',
+      wasClean: Boolean(event?.wasClean),
+    })
+  socket.onerror = (event) => onError?.({ url, event })
   socket.onmessage = (event) => {
-    const socketEvent = JSON.parse(event.data)
-    onEvent(socketEvent, profile.id)
+    try {
+      const socketEvent = JSON.parse(event.data)
+      onEvent(socketEvent, profile.id)
+    } catch {
+      onError?.({ url, event, reason: 'invalid_message' })
+    }
   }
 
   return socket
@@ -38,6 +49,10 @@ export function sendRealtimeMessage(socket, { profile, room, text, attachment })
 
 export function closeRealtime(socketRef) {
   if (socketRef.current) {
+    socketRef.current.onclose = null
+    socketRef.current.onerror = null
+    socketRef.current.onmessage = null
+    socketRef.current.onopen = null
     socketRef.current.close()
     socketRef.current = null
   }

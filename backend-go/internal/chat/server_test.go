@@ -43,6 +43,15 @@ func TestIsOriginAllowed(t *testing.T) {
 	if !isOriginAllowed("https://example.com") {
 		t.Fatal("expected configured origin to be allowed")
 	}
+	if !isOriginAllowed("http://localhost:8081") {
+		t.Fatal("expected React Native Metro origin to be allowed")
+	}
+	if !isOriginAllowed("null") {
+		t.Fatal("expected native null origin to be allowed")
+	}
+	if !isOriginAllowed("react-native://localhost") {
+		t.Fatal("expected React Native scheme origin to be allowed")
+	}
 	if isOriginAllowed("https://evil.example") {
 		t.Fatal("did not expect unconfigured origin to be allowed")
 	}

@@ -46,6 +46,8 @@ import {
 
 const stockBotPendingId = 'stock-bot-pending'
 const reconnectBackoffMs = [1000, 2000, 5000, 8000]
+const socketConnectTimeoutMs = 8000
+const maxReconnectAttempts = 4
 
 function createStockRoom(profile) {
   return {
@@ -93,6 +95,8 @@ export function useChatViewModel() {
   const shouldReconnectRef = useRef(true)
   const isWakingBackendRef = useRef(false)
   const reconnectAttemptRef = useRef(0)
+  const socketTokenRef = useRef(0)
+  const socketConnectTimerRef = useRef(null)
 
   const activeRoom = useMemo(
     () => rooms.find((room) => room.id === activeRoomId) || rooms[0] || null,
@@ -223,6 +227,13 @@ export function useChatViewModel() {
     }
   }, [])
 
+  const clearSocketConnectTimer = useCallback(() => {
+    if (socketConnectTimerRef.current) {
+      clearTimeout(socketConnectTimerRef.current)
+      socketConnectTimerRef.current = null
+    }
+  }, [])
+
   const getReconnectRoom = useCallback(() => {
     const currentRooms = roomsRef.current
     const activeRoom =
@@ -232,21 +243,29 @@ export function useChatViewModel() {
 
   const disconnectSocket = useCallback(({ allowReconnect = false } = {}) => {
     shouldReconnectRef.current = allowReconnect
+    socketTokenRef.current += 1
     clearReconnectTimer()
+    clearSocketConnectTimer()
     closeRealtime(socketRef)
-  }, [clearReconnectTimer])
+  }, [clearReconnectTimer, clearSocketConnectTimer])
 
-  const scheduleReconnect = useCallback((reason = '連線中斷，正在重新連線。') => {
+  const scheduleReconnect = useCallback((reason = '即時連線中斷，正在重新連線。') => {
     if (!profileRef.current || isWakingBackendRef.current) return
     if (reconnectTimerRef.current) return
 
     setIsConnected(false)
     setConnectionState('reconnecting')
     setReconnectAttempt((currentAttempt) => {
+      if (currentAttempt >= maxReconnectAttempts) {
+        setConnectionState('disconnected')
+        setConnectionError('即時連線暫時中斷。請按「喚醒後端」重新建立連線。')
+        return currentAttempt
+      }
+
       const nextAttempt = currentAttempt + 1
       const delay =
         reconnectBackoffMs[Math.min(nextAttempt - 1, reconnectBackoffMs.length - 1)]
-      setConnectionError(`${reason} 第 ${nextAttempt} 次重試將在 ${Math.round(delay / 1000)} 秒後進行。`)
+      setConnectionError(`${reason} 將在 ${Math.round(delay / 1000)} 秒後重試。`)
 
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null
@@ -263,8 +282,11 @@ export function useChatViewModel() {
   const connectSocket = useCallback((currentProfile, room) => {
     shouldReconnectRef.current = false
     clearReconnectTimer()
+    clearSocketConnectTimer()
     closeRealtime(socketRef)
     shouldReconnectRef.current = true
+    const socketToken = socketTokenRef.current + 1
+    socketTokenRef.current = socketToken
     setConnectionState(reconnectAttemptRef.current > 0 ? 'reconnecting' : 'connecting')
 
     try {
@@ -272,43 +294,74 @@ export function useChatViewModel() {
         profile: currentProfile,
         room,
         onEvent: (...args) => eventHandlerRef.current?.(...args),
-        onDisconnected: () => {
-          setIsConnected(false)
-          if (shouldReconnectRef.current) {
-            scheduleReconnect()
-          } else {
-            setConnectionState('idle')
+        onOpen: ({ url }) => {
+          if (socketTokenRef.current !== socketToken) return
+          clearSocketConnectTimer()
+          if (__DEV__) console.log('[YunaIM socket] open', url)
+          setIsConnected(true)
+          setConnectionState('connected')
+          setReconnectAttempt(0)
+          setConnectionError('')
+          sendActiveConversation(socket, room.conversationId)
+        },
+        onClose: ({ url, code, reason, wasClean }) => {
+          if (socketTokenRef.current !== socketToken) return
+          clearSocketConnectTimer()
+          if (__DEV__) {
+            console.log('[YunaIM socket] close', {
+              url,
+              code,
+              reason,
+              wasClean,
+            })
           }
+          setIsConnected(false)
+          setConnectionState(shouldReconnectRef.current ? 'disconnected' : 'idle')
+          if (shouldReconnectRef.current) {
+            const closeCodeText = code ? `（code ${code}）` : ''
+            setConnectionError(`即時連線已中斷${closeCodeText}。請按「喚醒後端」重新建立連線。`)
+          }
+        },
+        onError: ({ url, reason }) => {
+          if (socketTokenRef.current !== socketToken) return
+          clearSocketConnectTimer()
+          if (__DEV__) console.log('[YunaIM socket] error', { url, reason })
+          setIsConnected(false)
+          setConnectionState('disconnected')
+          setConnectionError('即時連線失敗。請按「喚醒後端」重新建立連線。')
         },
       })
       socketRef.current = socket
-      socket.onopen = () => {
-        setIsConnected(true)
-        setConnectionState('connected')
-        setReconnectAttempt(0)
-        setConnectionError('')
-        sendActiveConversation(socket, room.conversationId)
-      }
-      socket.onerror = () => {
-        setConnectionError('WebSocket 連線失敗，正在嘗試重新連線。')
-      }
+      socketConnectTimerRef.current = setTimeout(() => {
+        if (socketTokenRef.current !== socketToken) return
+        if (socket.readyState === WebSocket.OPEN) return
+        if (__DEV__) console.log('[YunaIM socket] timeout', { room: room.conversationId })
+        setIsConnected(false)
+        setConnectionState('disconnected')
+        setConnectionError('即時連線逾時。請按「喚醒後端」重新建立連線。')
+        closeRealtime(socketRef)
+      }, socketConnectTimeoutMs)
     } catch {
+      clearSocketConnectTimer()
       scheduleReconnect('WebSocket 連線失敗，正在重新連線。')
       setIsConnected(false)
     }
-  }, [clearReconnectTimer, scheduleReconnect])
+  }, [clearReconnectTimer, clearSocketConnectTimer, scheduleReconnect])
 
   connectSocketRef.current = connectSocket
 
   const loadInitialChat = useCallback(
-    async (currentProfile) => {
+    async (currentProfile, options = {}) => {
+      const { resetView = true, reconnectSocket = true } = options
       const stockRoom = createStockRoom(currentProfile)
 
       setIsLoadingChat(true)
       setRoomError('')
-      setRooms([stockRoom])
-      setActiveRoomId(stockRoom.id)
-      setMobileView('rooms')
+      if (resetView) {
+        setRooms([stockRoom])
+        setActiveRoomId(stockRoom.id)
+        setMobileView('rooms')
+      }
 
       try {
         const [friends, groups, conversations, users, requests] = await Promise.all([
@@ -339,9 +392,11 @@ export function useChatViewModel() {
         setReconnectAttempt(0)
         setActiveRoomId(resolvedActiveRoomId)
         await loadMessagesForRoom(currentProfile, activeSocketRoom)
-        connectSocket(currentProfile, activeSocketRoom)
+        if (reconnectSocket) connectSocket(currentProfile, activeSocketRoom)
+        return activeSocketRoom
       } catch {
         setRoomError('聊天資料載入失敗，請稍後再試。')
+        return null
       } finally {
         setIsLoadingChat(false)
       }
@@ -446,17 +501,24 @@ export function useChatViewModel() {
   }
 
   const wakeAndReload = useCallback(async () => {
-    if (!profileRef.current || isWakingBackend) return false
+    const currentProfile = profileRef.current
+    if (!currentProfile || isWakingBackend) return false
 
     setIsWakingBackend(true)
     setConnectionState('waking')
     setConnectionError('正在喚醒後端並重新建立連線。')
+    setReconnectAttempt(0)
+    reconnectAttemptRef.current = 0
     clearReconnectTimer()
     try {
       await wakeBackend()
-      await loadInitialChat(profileRef.current)
-      setConnectionError('')
-      setConnectionState('connected')
+      const activeSocketRoom = await loadInitialChat(currentProfile, {
+        resetView: false,
+        reconnectSocket: false,
+      })
+      const reconnectRoom = activeSocketRoom || getReconnectRoom()
+      if (reconnectRoom) connectSocket(currentProfile, reconnectRoom)
+      setConnectionState('connecting')
       setReconnectAttempt(0)
       return true
     } catch {
@@ -466,7 +528,7 @@ export function useChatViewModel() {
     } finally {
       setIsWakingBackend(false)
     }
-  }, [clearReconnectTimer, isWakingBackend, loadInitialChat])
+  }, [clearReconnectTimer, connectSocket, getReconnectRoom, isWakingBackend, loadInitialChat])
 
   const sendMessage = async (text) => {
     const trimmed = text.trim()
@@ -481,8 +543,9 @@ export function useChatViewModel() {
       return false
     }
     if (socketRef.current?.readyState !== WebSocket.OPEN) {
-      setConnectionError('WebSocket 尚未連線，正在嘗試重新連線。')
-      scheduleReconnect('WebSocket 尚未連線，正在重新連線。')
+      setConnectionError('即時連線尚未建立，正在重新連線。')
+      setConnectionState('reconnecting')
+      connectSocket(profile, activeRoom)
       return false
     }
 

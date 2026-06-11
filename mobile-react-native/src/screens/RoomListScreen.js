@@ -17,9 +17,12 @@ import { RoomListItem } from '../components/RoomListItem'
 export function RoomListScreen({
   activeRoomId,
   availableUsers,
+  connectionError,
   error,
   friendRequests,
+  isConnected,
   isLoadingChat,
+  isWakingBackend,
   onAddFriend,
   onCreateGroup,
   onDeleteFriend,
@@ -29,6 +32,7 @@ export function RoomListScreen({
   onRespondToFriendRequest,
   onSelectRoom,
   onStartChatWithUser,
+  onWakeBackend,
   profile,
   rooms,
 }) {
@@ -487,7 +491,28 @@ export function RoomListScreen({
         <View style={styles.roomHeaderText}>
           <Text style={styles.roomScreenTitle}>聊天室</Text>
         </View>
+        <View style={[styles.status, isConnected && styles.statusConnected]}>
+          <Text
+            style={[
+              styles.statusText,
+              isConnected && styles.statusConnectedText,
+            ]}
+          >
+            {isConnected ? '已連線' : '離線'}
+          </Text>
+        </View>
       </View>
+
+      {connectionError ? (
+        <View style={styles.connectionError}>
+          <Text style={styles.connectionErrorText}>{connectionError}</Text>
+          <Pressable onPress={onWakeBackend} style={styles.connectionErrorButton}>
+            <Text style={styles.connectionErrorButtonText}>
+              {isWakingBackend ? '喚醒中' : '喚醒後端'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {error ? (
         <Pressable onPress={onDismissError} style={styles.notice}>

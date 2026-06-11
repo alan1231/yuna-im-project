@@ -72,7 +72,6 @@ export function ChatScreen({
   onStartChatWithUser,
   onWakeBackend,
   profile,
-  reconnectAttempt,
   rooms,
 }) {
   const [previewImage, setPreviewImage] = useState(null)
@@ -119,18 +118,22 @@ export function ChatScreen({
         <RoomListScreen
           activeRoomId={activeRoom?.id || ''}
           availableUsers={availableUsers}
+          connectionError={connectionError}
+          isConnected={isConnected}
+          isWakingBackend={isWakingBackend}
           error={error}
-            friendRequests={friendRequests}
-            isLoadingChat={isLoadingChat}
+          friendRequests={friendRequests}
+          isLoadingChat={isLoadingChat}
           onAddFriend={onAddFriend}
           onCreateGroup={onCreateGroup}
           onDeleteFriend={onDeleteFriend}
           onDismissError={onDismissError}
-            onLogout={onLogout}
-            onRefreshRooms={onRefreshRooms}
+          onLogout={onLogout}
+          onRefreshRooms={onRefreshRooms}
           onRespondToFriendRequest={onRespondToFriendRequest}
           onSelectRoom={onSelectRoom}
           onStartChatWithUser={onStartChatWithUser}
+          onWakeBackend={onWakeBackend}
           profile={profile}
           rooms={rooms}
         />
@@ -179,13 +182,7 @@ export function ChatScreen({
             >
               {isConnected
                 ? '已連線'
-                : connectionState === 'waking'
-                  ? '喚醒中'
-                  : connectionState === 'reconnecting'
-                    ? `重連中 ${reconnectAttempt || ''}`.trim()
-                    : connectionState === 'connecting'
-                      ? '連線中'
-                      : '離線'}
+                : '離線'}
             </Text>
           </View>
           {activeRoom?.isGroup ? (

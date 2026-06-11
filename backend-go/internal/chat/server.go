@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -322,6 +323,12 @@ func isOriginAllowed(origin string) bool {
 	if origin == "" {
 		return true
 	}
+	if origin == "null" {
+		return true
+	}
+	if isMobileDevelopmentOrigin(origin) {
+		return true
+	}
 
 	for _, allowedOrigin := range strings.Split(allowedOrigins, ",") {
 		if strings.TrimSpace(allowedOrigin) == origin {
@@ -330,6 +337,19 @@ func isOriginAllowed(origin string) bool {
 	}
 
 	return false
+}
+
+func isMobileDevelopmentOrigin(origin string) bool {
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if parsedOrigin.Scheme == "react-native" {
+		return true
+	}
+
+	host := parsedOrigin.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {

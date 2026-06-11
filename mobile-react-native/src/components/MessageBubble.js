@@ -26,6 +26,13 @@ export function MessageBubble({
 
   return (
     <View style={[styles.messageRow, isSelf && styles.selfMessageRow]}>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.messageTail,
+          isSelf ? styles.selfMessageTail : styles.otherMessageTail,
+        ]}
+      />
       <View style={[styles.messageBubble, isSelf && styles.selfMessageBubble]}>
         {!isSelf && isGroup ? <Text style={styles.senderText}>{message.sender}</Text> : null}
         {isPending ? (
