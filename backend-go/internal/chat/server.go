@@ -1209,7 +1209,6 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 			IsFriend:            isFriend,
 			IsGroup:             isGroup,
 			MemberIDs:           memberIDs,
-			UnreadCount:         countUnreadMessages(r.Context(), client, userID, conversationID),
 		})
 		seen[conversationID] = true
 	}
@@ -1219,6 +1218,8 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		http.Error(w, "list conversations failed", http.StatusInternalServerError)
 		return
 	}
+
+	populateUnreadCounts(r.Context(), client, userID, conversations)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(conversations); err != nil {
@@ -1454,6 +1455,12 @@ func countUnreadMessages(ctx context.Context, client *mongo.Client, userID strin
 	}
 
 	return count
+}
+
+func populateUnreadCounts(ctx context.Context, client *mongo.Client, userID string, conversations []conversationResponse) {
+	for index := range conversations {
+		conversations[index].UnreadCount = countUnreadMessages(ctx, client, userID, conversations[index].ConversationID)
+	}
 }
 
 func conversationIncludesUser(ctx context.Context, client *mongo.Client, conversationID string, userID string) bool {

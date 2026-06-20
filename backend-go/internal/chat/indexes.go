@@ -76,11 +76,27 @@ func messageIndexes() []mongo.IndexModel {
 		},
 		{
 			Keys: bson.D{
+				{Key: "participant_ids", Value: 1},
+				{Key: "time", Value: -1},
+			},
+			Options: options.Index().SetName("participant_time_desc"),
+		},
+		{
+			Keys: bson.D{
 				{Key: "conversation_id", Value: 1},
 				{Key: "recipient_id", Value: 1},
 				{Key: "read_at", Value: 1},
 			},
 			Options: options.Index().SetName("conversation_recipient_read"),
+		},
+		{
+			Keys: bson.D{
+				{Key: "conversation_id", Value: 1},
+				{Key: "participant_ids", Value: 1},
+				{Key: "sender_id", Value: 1},
+				{Key: "read_by", Value: 1},
+			},
+			Options: options.Index().SetName("conversation_participant_sender_read_by"),
 		},
 	}
 }

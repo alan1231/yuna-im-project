@@ -6,7 +6,7 @@ import AccountSetup from './components/account/AccountSetup'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow'
 import LanguageSwitcher from './components/LanguageSwitcher.jsx'
-import { chatQueryKeys, createUser as createUserApi, fetchUsers } from './api/chatApi'
+import { chatQueryKeys, createUser as createUserApi, fetchUsers, wakeBackend as wakeBackendApi } from './api/chatApi'
 import { useAuthStore } from './stores/authStore'
 import type { CurrentUser } from './types/chat'
 
@@ -48,10 +48,7 @@ function ChatRoute() {
     },
   })
 
-  const createUser = async (displayName: string) => {
-    const name = displayName.trim()
-    if (!name) return
-
+  const runWithBackendWake = async (action: () => Promise<void>) => {
     setIsCreatingUser(true)
     setShowBackendWakeHint(false)
     setAccountError('')
@@ -60,19 +57,8 @@ function ChatRoute() {
     }, 1200)
 
     try {
-      const user = await createUserMutation.mutateAsync({
-        userId: createLocalUserId(),
-        displayName: name,
-      })
-      persistUser({
-        id: user.user_id,
-        displayName: user.display_name,
-      })
-    } catch (error) {
-      console.error('Account creation failed:', error)
-      setAccountError(error instanceof Error && error.message.includes('409')
-        ? t('account.errors.duplicateName')
-        : t('account.errors.createFailed'))
+      await wakeBackendApi()
+      await action()
     } finally {
       window.clearTimeout(wakeHintTimer)
       setShowBackendWakeHint(false)
@@ -80,39 +66,54 @@ function ChatRoute() {
     }
   }
 
-  const loginUser = async (displayName: string) => {
+  const createUser = async (displayName: string) => {
     const name = displayName.trim()
-    if (!name) return
-
-    setIsCreatingUser(true)
-    setShowBackendWakeHint(false)
-    setAccountError('')
-    const wakeHintTimer = window.setTimeout(() => {
-      setShowBackendWakeHint(true)
-    }, 1200)
+    if (!name || isCreatingUser) return
 
     try {
-      const users = await queryClient.fetchQuery({
-        queryKey: chatQueryKeys.users(''),
-        queryFn: () => fetchUsers(),
+      await runWithBackendWake(async () => {
+        const user = await createUserMutation.mutateAsync({
+          userId: createLocalUserId(),
+          displayName: name,
+        })
+        persistUser({
+          id: user.user_id,
+          displayName: user.display_name,
+        })
       })
-      const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
-      if (!user) {
-        setAccountError(t('account.errors.loginNotFound'))
-        return
-      }
+    } catch (error) {
+      console.error('Account creation failed:', error)
+      setAccountError(error instanceof Error && error.message.includes('409')
+        ? t('account.errors.duplicateName')
+        : t('account.errors.createFailed'))
+    }
+  }
 
-      persistUser({
-        id: user.user_id,
-        displayName: user.display_name,
+  const loginUser = async (displayName: string) => {
+    const name = displayName.trim()
+    if (!name || isCreatingUser) return
+
+    try {
+      await runWithBackendWake(async () => {
+        await queryClient.invalidateQueries({ queryKey: chatQueryKeys.users('') })
+        const users = await queryClient.fetchQuery({
+          queryKey: chatQueryKeys.users(''),
+          queryFn: () => fetchUsers(),
+        })
+        const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
+        if (!user) {
+          setAccountError(t('account.errors.loginNotFound'))
+          return
+        }
+
+        persistUser({
+          id: user.user_id,
+          displayName: user.display_name,
+        })
       })
     } catch (error) {
       console.error('Sign in failed:', error)
       setAccountError(t('account.errors.loginFailed'))
-    } finally {
-      window.clearTimeout(wakeHintTimer)
-      setShowBackendWakeHint(false)
-      setIsCreatingUser(false)
     }
   }
 
