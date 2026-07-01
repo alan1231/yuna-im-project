@@ -1,3 +1,5 @@
+/* global jest */
+
 const mockStorage = new Map();
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
