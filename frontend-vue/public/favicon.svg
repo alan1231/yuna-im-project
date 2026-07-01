@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Yuna IM">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#0f766e" />
+      <stop offset="100%" stop-color="#0b2239" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#g)" />
+  <path d="M30 38h68a8 8 0 0 1 8 8v28a8 8 0 0 1-8 8H62L44 96V82H30a8 8 0 0 1-8-8V46a8 8 0 0 1 8-8Z" fill="#fff" opacity="0.95"/>
+  <circle cx="52" cy="60" r="6" fill="#0f766e"/>
+  <circle cx="76" cy="60" r="6" fill="#0f766e"/>
+</svg>
