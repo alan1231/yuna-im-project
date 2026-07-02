@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../core/config.dart';
 import '../models/chat_room.dart';
 import '../models/user_profile.dart';
 import '../view_models/chat_view_model.dart';
@@ -217,11 +216,11 @@ class _RoomDrawerState extends State<RoomDrawer> {
   }
 
   Future<void> _showCreateGroupDialog(BuildContext context) async {
-    final friends = widget.viewModel.rooms
-        .where(
-          (room) => room.isFriend && !room.isGroup && room.id != stockBotId,
-        )
-        .toList();
+      final friends = widget.viewModel.rooms
+          .where(
+          (room) => room.isFriend && !room.isGroup,
+          )
+          .toList();
     final nameController = TextEditingController();
     final selectedIds = <String>{};
     final result = await showDialog<_CreateGroupResult>(
@@ -391,8 +390,6 @@ class _RoomActions extends StatelessWidget {
         label: Text(room.unreadCount > 99 ? '99+' : '${room.unreadCount}'),
       );
     }
-    if (room.id == stockBotId) return const SizedBox.shrink();
-
     return PopupMenuButton<String>(
       tooltip: '聊天室操作',
       onSelected: (value) async {

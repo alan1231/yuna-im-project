@@ -1,81 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getChangeClass } from '../../utils/stockChange'
-import { localizeStockText, parseStockReply } from '../../utils/stockReply'
-
-const formatNumber = (value, language, options = {}) => {
-  if (!Number.isFinite(value)) return '-'
-  return new Intl.NumberFormat(language, {
-    minimumFractionDigits: options.minimumFractionDigits ?? 2,
-    maximumFractionDigits: options.maximumFractionDigits ?? 2,
-  }).format(value)
-}
-
-function StockReplyCard({ stock, language, t }) {
-  const trendClass =
-    stock.changePercent > 0
-      ? 'stock-card-value-up'
-      : stock.changePercent < 0
-        ? 'stock-card-value-down'
-        : ''
-
-  return (
-    <div className="stock-card" aria-label={`${stock.symbol} stock quote`}>
-      <header className="stock-card-header">
-        <span className="stock-card-kicker">{t('chat.stockBotName')}</span>
-        <strong>{stock.symbol}</strong>
-      </header>
-
-      <div className="stock-card-metrics">
-        <section>
-          <span>{t('stockCard.price')}</span>
-          <strong>{formatNumber(stock.price, language)}</strong>
-        </section>
-        <section>
-          <span>{t('stockCard.change')}</span>
-          <strong className={trendClass}>{formatNumber(stock.changePercent, language)}%</strong>
-        </section>
-      </div>
-
-      <div className="stock-card-dividend">
-        {stock.noDividendData ? (
-          <p>{t('stockCard.noDividends')}</p>
-        ) : (
-          <>
-            <div className="stock-card-dividend-summary">
-              <span>{t('stockCard.latestDividend')}</span>
-              <strong>
-                {stock.latestDividend
-                  ? `${formatNumber(stock.latestDividend.amount, language)} (${stock.latestDividend.date})`
-                  : '-'}
-              </strong>
-            </div>
-            <div className="stock-card-dividend-summary">
-              <span>{t('stockCard.trailingTotal')}</span>
-              <strong>
-                {stock.trailingDividendTotal === null
-                  ? '-'
-                  : formatNumber(stock.trailingDividendTotal, language)}
-              </strong>
-            </div>
-          </>
-        )}
-      </div>
-
-      {stock.dividendRecords.length > 0 ? (
-        <div className="stock-card-records">
-          {stock.dividendRecords.map((record) => (
-            <div key={`${record.date}-${record.amount}`}>
-              <span>{record.date}</span>
-              <strong>{formatNumber(record.amount, language)}</strong>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
-}
 
 export default function MessageBubble({ message, showSenderName = false }) {
   const { i18n, t } = useTranslation()
@@ -87,9 +12,6 @@ export default function MessageBubble({ message, showSenderName = false }) {
   const hasAttachment = Boolean(message.attachmentUrl)
   const isImageAttachment = message.attachmentType?.startsWith('image/')
   const attachmentLabel = message.attachmentName || t('chat.file')
-  const changeClass = getChangeClass(message)
-  const stockReply = !isSelf && !isPending ? parseStockReply(message.text) : null
-  const displayText = localizeStockText(message.text, t)
   const sentTime = (() => {
     const date = new Date(message.sentAt)
     if (Number.isNaN(date.getTime())) return message.sentAt || ''
@@ -105,7 +27,6 @@ export default function MessageBubble({ message, showSenderName = false }) {
     'message',
     isSelf ? 'message-self' : '',
     isPending ? 'message-pending' : '',
-    stockReply ? 'message-stock-card' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -151,20 +72,10 @@ export default function MessageBubble({ message, showSenderName = false }) {
             <span>{attachmentLabel}</span>
           </a>
         ) : null}
-        {isPending ? (
-          <div className="typing-indicator" aria-label={t('chat.stockBotTyping')}>
-            <span />
-            <span />
-            <span />
-          </div>
-        ) : null}
         {!isPending && showSenderName && !isSelf && message.sender ? (
           <span className="message-sender-name">{message.sender}</span>
         ) : null}
-        {!isPending && stockReply ? (
-          <StockReplyCard stock={stockReply} language={i18n.language} t={t} />
-        ) : null}
-        {!isPending && hasText && !stockReply ? <p className={changeClass}>{displayText}</p> : null}
+        {!isPending && hasText ? <p>{message.text}</p> : null}
         {!isPending ? (
           <footer className="message-footer">
             {sentTime ? <time>{sentTime}</time> : null}

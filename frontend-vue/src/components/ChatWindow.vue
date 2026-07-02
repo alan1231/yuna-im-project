@@ -16,157 +16,202 @@
           {{ actionError }}
         </p>
 
-        <div class="chat-summary-grid">
-          <article class="summary-card">
-            <span>{{ t('friends') }}</span>
-            <strong>{{ friends.length }}</strong>
-          </article>
-          <article class="summary-card">
-            <span>{{ t('groups') }}</span>
-            <strong>{{ groups.length }}</strong>
-          </article>
-          <article class="summary-card">
-            <span>{{ t('conversations') }}</span>
-            <strong>{{ conversations.length }}</strong>
-          </article>
-        </div>
+        <div class="sidebar-more">
+          <button type="button" class="sidebar-more-summary" @click="moreOpen = !moreOpen">
+            <span>{{ t('more') }}</span>
+            <span class="sidebar-more-icon">☰</span>
+          </button>
 
-        <div class="sidebar-section">
-          <div class="sidebar-section-head">
-            <h3>{{ t('friends') }}</h3>
-            <span class="muted-pill">{{ friends.length }}</span>
-          </div>
-          <div class="chip-row">
-            <span v-if="!friends.length" class="sidebar-empty">{{ t('noData') }}</span>
-          </div>
-          <div class="contact-list">
-            <div v-for="friend in friends" :key="friend.friend_id" class="contact-row">
-              <button type="button" class="contact-row-main" @click="selectFriendConversation(friend.friend_id)">
-                <span class="contact-title">
-                  <strong>{{ friend.display_name }}</strong>
-                  <span class="contact-meta">{{ friend.online ? 'online' : 'offline' }}</span>
-                </span>
-                <span class="contact-meta">{{ friend.friend_id }}</span>
+          <div v-if="moreOpen" class="sidebar-more-panel">
+            <div class="sidebar-more-menu">
+              <button
+                type="button"
+                class="sidebar-more-option"
+                :class="{ active: morePanel === 'friends' }"
+                @click="morePanel = 'friends'"
+              >
+                <span>{{ t('friends') }}</span>
+                <small>{{ friends.length }}</small>
               </button>
-              <button type="button" class="contact-danger" @click="removeFriend(friend.friend_id)">
-                {{ t('delete') }}
+              <button
+                type="button"
+                class="sidebar-more-option"
+                :class="{ active: morePanel === 'friendRequests' }"
+                @click="morePanel = 'friendRequests'"
+              >
+                <span>{{ t('friendRequests') }}</span>
+                <small>{{ friendRequests.length }}</small>
               </button>
+              <button
+                type="button"
+                class="sidebar-more-option"
+                :class="{ active: morePanel === 'addFriend' }"
+                @click="morePanel = 'addFriend'"
+              >
+                <span>{{ t('addFriend') }}</span>
+                <small>+</small>
+              </button>
+              <button
+                type="button"
+                class="sidebar-more-option"
+                :class="{ active: morePanel === 'groups' }"
+                @click="morePanel = 'groups'"
+              >
+                <span>{{ t('groups') }}</span>
+                <small>{{ groups.length }}</small>
+              </button>
+              <button
+                type="button"
+                class="sidebar-more-option"
+                :class="{ active: morePanel === 'createGroup' }"
+                @click="morePanel = 'createGroup'"
+              >
+                <span>{{ t('createGroup') }}</span>
+                <small>+</small>
+              </button>
+            </div>
+
+            <div class="sidebar-more-card">
+              <template v-if="morePanel === 'friends'">
+                <div class="sidebar-section-head">
+                  <h3>{{ t('friends') }}</h3>
+                  <span class="muted-pill">{{ friends.length }}</span>
+                </div>
+                <div class="chip-row">
+                  <span v-if="!friends.length" class="sidebar-empty">{{ t('noData') }}</span>
+                </div>
+                <div class="contact-list sidebar-scroll-list">
+                  <div v-for="friend in friends" :key="friend.friend_id" class="contact-row">
+                    <button type="button" class="contact-row-main" @click="selectFriendConversation(friend.friend_id)">
+                      <span class="contact-title">
+                        <strong>{{ friend.display_name }}</strong>
+                        <span class="contact-meta">{{ friend.online ? t('online') : t('offline') }}</span>
+                      </span>
+                    </button>
+                    <button type="button" class="contact-danger" @click="removeFriend(friend.friend_id)">
+                      {{ t('delete') }}
+                    </button>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="morePanel === 'friendRequests'">
+                <div class="sidebar-section-head">
+                  <h3>{{ t('friendRequests') }}</h3>
+                  <span class="muted-pill">{{ friendRequests.length }}</span>
+                </div>
+                <div class="contact-list sidebar-scroll-list">
+                  <div v-for="request in friendRequests" :key="request.request_id" class="contact-row">
+                    <div class="contact-row-main contact-row-static">
+                      <span class="contact-title">
+                        <strong>{{ request.from_display_name }}</strong>
+                        <span class="contact-meta">{{ request.from_user_id }}</span>
+                      </span>
+                      <span class="contact-meta">{{ formatConversationTime(request.created_at) }}</span>
+                    </div>
+                    <div class="contact-actions">
+                      <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, true)">
+                        {{ t('accept') }}
+                      </button>
+                      <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, false)">
+                        {{ t('reject') }}
+                      </button>
+                    </div>
+                  </div>
+                  <span v-if="!friendRequests.length" class="sidebar-empty">{{ t('noData') }}</span>
+                </div>
+              </template>
+
+              <template v-else-if="morePanel === 'addFriend'">
+                <div class="sidebar-section-head">
+                  <h3>{{ t('addFriend') }}</h3>
+                </div>
+                <form class="inline-form" @submit.prevent="submitFriend">
+                  <input v-model="friendName" :placeholder="t('addFriendPlaceholder')" :disabled="isActionPending" />
+                  <button class="primary-button" type="submit" :disabled="isActionPending || !friendName.trim()">
+                    {{ t('addFriendSubmit') }}
+                  </button>
+                </form>
+              </template>
+
+              <template v-else-if="morePanel === 'groups'">
+                <div class="sidebar-section-head">
+                  <h3>{{ t('groups') }}</h3>
+                  <span class="muted-pill">{{ groups.length }}</span>
+                </div>
+                <div class="contact-list sidebar-scroll-list">
+                  <div v-for="group in groups" :key="group.group_id" class="contact-row">
+                    <button type="button" class="contact-row-main" @click="selectConversation(group.conversation_id)">
+                      <span class="contact-title">
+                        <strong>{{ group.name }}</strong>
+                        <span class="contact-meta">{{ group.member_ids?.length ?? 0 }} members</span>
+                      </span>
+                      <span class="contact-meta">{{ group.group_id }}</span>
+                    </button>
+                    <button type="button" class="contact-danger" @click="leaveExistingGroup(group.group_id)">
+                      {{ t('leave') }}
+                    </button>
+                  </div>
+                  <span v-if="!groups.length" class="sidebar-empty">{{ t('noData') }}</span>
+                </div>
+              </template>
+
+              <template v-else-if="morePanel === 'createGroup'">
+                <div class="sidebar-section-head">
+                  <h3>{{ t('createGroup') }}</h3>
+                </div>
+                <form class="stack-form" @submit.prevent="submitGroup">
+                  <input v-model="groupName" :placeholder="t('groupNamePlaceholder')" :disabled="isActionPending" />
+                  <div class="member-picker">
+                    <label v-for="user in availableUsers" :key="user.user_id" class="member-option">
+                      <input
+                        :checked="selectedGroupMemberIds.includes(user.user_id)"
+                        type="checkbox"
+                        :disabled="isActionPending"
+                        @change="toggleGroupMember(user.user_id)"
+                      />
+                      <span>{{ user.display_name }}</span>
+                    </label>
+                  </div>
+                  <button class="primary-button" type="submit" :disabled="isActionPending || !groupName.trim() || !selectedGroupMemberIds.length">
+                    {{ t('createGroupSubmit') }}
+                  </button>
+                </form>
+              </template>
             </div>
           </div>
         </div>
 
-        <div class="sidebar-section">
-          <div class="sidebar-section-head">
-            <h3>{{ t('friendRequests') }}</h3>
-            <span class="muted-pill">{{ friendRequests.length }}</span>
-          </div>
-          <div class="contact-list">
-            <div v-for="request in friendRequests" :key="request.request_id" class="contact-row">
-              <div class="contact-row-main contact-row-static">
-                <span class="contact-title">
-                  <strong>{{ request.from_display_name }}</strong>
-                  <span class="contact-meta">{{ request.from_user_id }}</span>
-                </span>
-                <span class="contact-meta">{{ formatConversationTime(request.created_at) }}</span>
-              </div>
-              <div class="contact-actions">
-                <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, true)">
-                  {{ t('accept') }}
-                </button>
-                <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, false)">
-                  {{ t('reject') }}
-                </button>
-              </div>
-            </div>
-            <span v-if="!friendRequests.length" class="sidebar-empty">{{ t('noData') }}</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-section-head">
-            <h3>{{ t('addFriend') }}</h3>
-          </div>
-          <form class="inline-form" @submit.prevent="submitFriend">
-            <input v-model="friendName" :placeholder="t('addFriendPlaceholder')" :disabled="isActionPending" />
-            <button class="primary-button" type="submit" :disabled="isActionPending || !friendName.trim()">
-              {{ t('addFriendSubmit') }}
-            </button>
-          </form>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-section-head">
-            <h3>{{ t('groups') }}</h3>
-            <span class="muted-pill">{{ groups.length }}</span>
-          </div>
-          <div class="contact-list">
-            <div v-for="group in groups" :key="group.group_id" class="contact-row">
-              <button type="button" class="contact-row-main" @click="selectConversation(group.conversation_id)">
-                <span class="contact-title">
-                  <strong>{{ group.name }}</strong>
-                  <span class="contact-meta">{{ group.member_ids?.length ?? 0 }} members</span>
-                </span>
-                <span class="contact-meta">{{ group.group_id }}</span>
-              </button>
-              <button type="button" class="contact-danger" @click="leaveExistingGroup(group.group_id)">
-                {{ t('leave') }}
-              </button>
-            </div>
-            <span v-if="!groups.length" class="sidebar-empty">{{ t('noData') }}</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-section-head">
-            <h3>{{ t('createGroup') }}</h3>
-          </div>
-          <form class="stack-form" @submit.prevent="submitGroup">
-            <input v-model="groupName" :placeholder="t('groupNamePlaceholder')" :disabled="isActionPending" />
-            <div class="member-picker">
-              <label v-for="user in availableUsers" :key="user.user_id" class="member-option">
-                <input
-                  :checked="selectedGroupMemberIds.includes(user.user_id)"
-                  type="checkbox"
-                  :disabled="isActionPending"
-                  @change="toggleGroupMember(user.user_id)"
-                />
-                <span>{{ user.display_name }}</span>
-              </label>
-            </div>
-            <button class="primary-button" type="submit" :disabled="isActionPending || !groupName.trim() || !selectedGroupMemberIds.length">
-              {{ t('createGroupSubmit') }}
-            </button>
-          </form>
-        </div>
-
-        <div class="sidebar-section">
+        <div class="sidebar-section sidebar-section-scroll">
           <div class="sidebar-section-head">
             <h3>{{ t('conversations') }}</h3>
             <span class="connection-pill" :data-state="connectionState">{{ connectionLabel }}</span>
           </div>
 
-          <button
-            v-for="conversation in allConversations"
-            :key="conversation.conversation_id"
-            type="button"
-            class="conversation-item"
-            :class="{ active: conversation.conversation_id === selectedConversationId }"
-            @click="selectConversation(conversation.conversation_id)"
-          >
-            <div class="conversation-avatar">
-              {{ initials(conversation.display_name) }}
-            </div>
-            <div class="conversation-copy">
-              <div class="conversation-title-row">
-                <strong>{{ conversation.display_name }}</strong>
-                <span>{{ formatConversationTime(conversation.last_message_at) }}</span>
+          <div class="conversation-list sidebar-scroll-list">
+            <button
+              v-for="conversation in allConversations"
+              :key="conversation.conversation_id"
+              type="button"
+              class="conversation-item"
+              :class="{ active: conversation.conversation_id === selectedConversationId }"
+              @click="selectConversation(conversation.conversation_id)"
+            >
+              <div class="conversation-avatar">
+                {{ initials(conversation.display_name) }}
               </div>
-              <p>{{ conversation.last_message || t('emptyConversation') }}</p>
-            </div>
-            <span v-if="conversation.unread_count" class="unread-badge">{{ conversation.unread_count }}</span>
-          </button>
+              <div class="conversation-copy">
+                <div class="conversation-title-row">
+                  <strong>{{ conversation.display_name }}</strong>
+                  <span>{{ formatConversationTime(conversation.last_message_at) }}</span>
+                </div>
+                <p>{{ conversation.last_message || t('emptyConversation') }}</p>
+              </div>
+              <span v-if="conversation.unread_count" class="unread-badge">{{ conversation.unread_count }}</span>
+            </button>
 
-          <p v-if="!conversations.length" class="sidebar-empty">{{ t('noData') }}</p>
+            <p v-if="!conversations.length" class="sidebar-empty">{{ t('noData') }}</p>
+          </div>
         </div>
       </aside>
 
@@ -175,17 +220,13 @@
           <header class="chat-header">
             <div>
               <p class="eyebrow">
-                {{ isStockBotRoom(selectedConversation) ? t('marketChat') : selectedConversation.is_group ? t('groups') : t('chatTitle') }}
+                {{ selectedConversation.is_group ? t('groups') : t('chatTitle') }}
               </p>
               <h2>{{ selectedConversation.display_name }}</h2>
-              <p class="chat-header-meta">
-                {{ selectedConversation.last_message || (isStockBotRoom(selectedConversation) ? t('stockEmptyDescription') : t('emptyConversation')) }}
-              </p>
+              <p class="chat-header-meta">{{ selectedConversation.last_message || t('emptyConversation') }}</p>
             </div>
             <div class="chat-header-actions">
-              <span class="muted-pill">
-                {{ isStockBotRoom(selectedConversation) ? t('stockBotInitial') : selectedConversation.is_group ? 'Group' : 'Direct' }}
-              </span>
+              <span class="muted-pill">{{ selectedConversation.is_group ? 'Group' : 'Direct' }}</span>
               <button
                 v-if="canStartVoiceCall(selectedConversation)"
                 class="ghost-button"
@@ -193,9 +234,6 @@
                 @click="startVoiceCall"
               >
                 {{ t('voiceCall') }}
-              </button>
-              <button v-if="isStockBotRoom(selectedConversation)" class="ghost-button" type="button" @click="sendQuickStockQuery(STOCK_QUICK_QUERIES[0])">
-                {{ t('stockQuery') }}
               </button>
               <button v-if="selectedConversation.is_group" class="ghost-button" type="button" @click="leaveCurrentGroup">
                 {{ t('leave') }}
@@ -233,25 +271,6 @@
           </div>
 
           <section ref="messagesViewport" class="message-list">
-            <div v-if="!messages.length && isStockBotRoom(selectedConversation)" class="stock-empty-state">
-              <span>{{ t('stockEmptyKicker') }}</span>
-              <h2>{{ selectedConversation.display_name }}</h2>
-              <p>{{ t('stockEmptyDescription') }}</p>
-              <div class="stock-empty-actions" :aria-label="t('stockQuickQueries')">
-                <button
-                  v-for="symbol in STOCK_QUICK_QUERIES"
-                  :key="symbol"
-                  type="button"
-                  class="ghost-button"
-                  :disabled="isSending || isProcessingFile"
-                  @click="sendQuickStockQuery(symbol)"
-                >
-                  {{ symbol }}
-                </button>
-              </div>
-              <small>{{ t('stockEmptyHint') }}</small>
-            </div>
-
             <article
               v-for="message in messages"
               :key="message.time + message.sender_id + (message.text || '')"
@@ -262,60 +281,7 @@
                 <strong>{{ displayNameFor(message.sender_id) }}</strong>
                 <span>{{ formatMessageTime(message.time) }}</span>
               </div>
-              <div v-if="isStockPendingMessage(message)" class="typing-indicator" :aria-label="t('stockCardPending')">
-                <span />
-                <span />
-                <span />
-              </div>
-              <template v-else-if="messageStockReply(message)">
-                <div class="stock-card" :aria-label="`${messageStockReply(message)?.symbol} stock quote`">
-                  <header class="stock-card-header">
-                    <span class="stock-card-kicker">{{ t('stockBotName') }}</span>
-                    <strong>{{ messageStockReply(message)?.symbol }}</strong>
-                  </header>
-
-                  <div class="stock-card-metrics">
-                    <section>
-                      <span>{{ t('stockCardPrice') }}</span>
-                      <strong>{{ messageStockReply(message)?.price?.toLocaleString() }}</strong>
-                    </section>
-                    <section>
-                      <span>{{ t('stockCardChange') }}</span>
-                      <strong :class="{ 'stock-card-value-up': (messageStockReply(message)?.changePercent || 0) > 0, 'stock-card-value-down': (messageStockReply(message)?.changePercent || 0) < 0 }">
-                        {{ messageStockReply(message)?.changePercent }}%
-                      </strong>
-                    </section>
-                  </div>
-
-                  <div class="stock-card-dividend">
-                    <p v-if="messageStockReply(message)?.noDividendData">{{ t('stockCardNoDividends') }}</p>
-                    <template v-else>
-                      <div class="stock-card-dividend-summary">
-                        <span>{{ t('stockCardLatestDividend') }}</span>
-                        <strong>
-                          {{
-                            messageStockReply(message)?.latestDividend
-                              ? `${messageStockReply(message)?.latestDividend?.amount?.toLocaleString()} (${messageStockReply(message)?.latestDividend?.date})`
-                              : '-'
-                          }}
-                        </strong>
-                      </div>
-                      <div class="stock-card-dividend-summary">
-                        <span>{{ t('stockCardTrailingTotal') }}</span>
-                        <strong>
-                          {{
-                            messageStockReply(message)?.trailingDividendTotal === null ||
-                            messageStockReply(message)?.trailingDividendTotal === undefined
-                              ? '-'
-                              : messageStockReply(message)?.trailingDividendTotal?.toLocaleString()
-                          }}
-                        </strong>
-                      </div>
-                    </template>
-                  </div>
-                </div>
-              </template>
-              <template v-else-if="messageAttachmentUrl(message)">
+              <template v-if="messageAttachmentUrl(message)">
                 <a
                   v-if="isImageAttachment(message)"
                   class="message-image-link"
@@ -338,7 +304,7 @@
                   <span>{{ messageAttachmentLabel(message) }}</span>
                 </a>
               </template>
-              <p v-if="message.text">{{ isStockBotMessage(message) ? formatStockPreview(message.text) : message.text }}</p>
+              <p v-if="message.text">{{ message.text }}</p>
               <p v-else-if="!messageAttachmentUrl(message)">...</p>
             </article>
 
@@ -355,7 +321,7 @@
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
-          >
+            >
             <div class="composer-input-stack">
               <div v-if="fileAttachment" class="file-attachment-preview">
                 <img
@@ -392,7 +358,6 @@
             </div>
             <input ref="fileInput" class="composer-file-input" type="file" @change="handleFileChange" />
             <button
-              v-if="!isStockBotRoom(selectedConversation)"
               type="button"
               class="ghost-button composer-file-button"
               :disabled="isSending || isProcessingFile"
@@ -403,7 +368,7 @@
               +
             </button>
             <button class="primary-button" type="submit" :disabled="isSending || isProcessingFile || (!draft.trim() && !fileAttachment)">
-              {{ isSending ? t('working') : isStockBotRoom(selectedConversation) ? t('stockQuery') : t('send') }}
+              {{ isSending ? t('working') : t('send') }}
             </button>
           </form>
         </template>
@@ -459,7 +424,7 @@ import {
   leaveGroup,
   respondFriendRequest,
 } from '../api'
-import { WS_URL } from '../config/api'
+import { getWsUrl } from '../config/api'
 import { useI18n } from '../i18n'
 import type {
   ApiUser,
@@ -471,9 +436,6 @@ import type {
   GroupRecord,
 } from '../types'
 
-const STOCK_BOT_ID = 'stock_bot'
-const STOCK_BOT_PENDING_ID = 'stock-bot-pending'
-const STOCK_QUICK_QUERIES = ['2330', '2317', 'NVDA', 'TSM']
 const VOICE_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 const props = defineProps<{
@@ -509,6 +471,8 @@ const isSending = ref(false)
 const isActionPending = ref(false)
 const isProcessingFile = ref(false)
 const connectionState = ref<'idle' | 'connecting' | 'open' | 'error'>('idle')
+const moreOpen = ref(false)
+const morePanel = ref<'friends' | 'friendRequests' | 'addFriend' | 'groups' | 'createGroup'>('friends')
 const messagesViewport = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const remoteAudioElement = ref<HTMLAudioElement | null>(null)
@@ -555,16 +519,7 @@ const connectionLabel = computed(() => {
   }
 })
 
-const stockBotConversation = computed<ConversationRecord>(() => ({
-  conversation_id: `dm:${[props.currentUser.id, STOCK_BOT_ID].sort().join(':')}`,
-  recipient_id: STOCK_BOT_ID,
-  display_name: t('stockBotName'),
-  last_message: '',
-  is_friend: false,
-  is_group: false,
-}))
-
-const allConversations = computed(() => [stockBotConversation.value, ...conversations.value])
+const allConversations = computed(() => conversations.value)
 
 const selectedConversation = computed(
   () =>
@@ -576,7 +531,6 @@ const selectedConversation = computed(
 const usersById = computed(() => {
   const map = new Map<string, string>()
   map.set(props.currentUser.id, props.currentUser.displayName)
-  map.set(STOCK_BOT_ID, t('stockBotName'))
   users.value.forEach((user) => map.set(user.user_id, user.display_name))
   friends.value.forEach((friend) => map.set(friend.friend_id, friend.display_name))
   groups.value.forEach((group) => map.set(group.group_id, group.name))
@@ -585,10 +539,8 @@ const usersById = computed(() => {
 
 const availableUsers = computed(() => users.value)
 
-const allowAttachments = computed(() => !isStockBotRoom(selectedConversation.value))
-
 const canStartVoiceCall = (room: ConversationRecord | null) =>
-  Boolean(room && !room.is_group && !isStockBotRoom(room) && voiceCall.value.status === 'idle')
+  Boolean(room && !room.is_group && voiceCall.value.status === 'idle')
 
 const voiceStatusText = computed(() => {
   switch (voiceCall.value.status) {
@@ -607,9 +559,8 @@ const conversationIdFor = (a: string, b: string) => {
   return `dm:${[a, b].map((value) => value.trim()).sort().join(':')}`
 }
 
-const findConversationIdForFriend = (friendId: string) => {
-  return allConversations.value.find((conversation) => conversation.conversation_id === conversationIdFor(props.currentUser.id, friendId))?.conversation_id || ''
-}
+const findConversationIdForFriend = (friendId: string) =>
+  allConversations.value.find((conversation) => conversation.conversation_id === conversationIdFor(props.currentUser.id, friendId))?.conversation_id || ''
 
 const buildDirectConversation = (friendId: string, displayName: string) => {
   const conversationId = conversationIdFor(props.currentUser.id, friendId)
@@ -633,9 +584,6 @@ const conversationForId = (conversationId: string) => {
     const otherId = a === props.currentUser.id ? b : a
     const friend = friends.value.find((item) => item.friend_id === otherId)
     const user = users.value.find((item) => item.user_id === otherId)
-    if (otherId === STOCK_BOT_ID) {
-      return stockBotConversation.value
-    }
     const displayName = friend?.display_name || user?.display_name || otherId || t('emptyConversation')
     return buildDirectConversation(otherId || '', displayName)
   }
@@ -682,89 +630,6 @@ const messageAttachmentUrl = (message: ChatMessage) => message.attachment_url ||
 const messageAttachmentType = (message: ChatMessage) => message.attachment_type || message.image_type || ''
 const messageAttachmentLabel = (message: ChatMessage) => message.attachment_name || message.image_name || t('file')
 const isImageAttachment = (message: ChatMessage) => messageAttachmentType(message).startsWith('image/')
-
-const stockHeaderPattern = /^([A-Z0-9.-]+)\s+今日股價:\s*([+-]?\d+(?:\.\d+)?)$/i
-const stockChangePattern = /^漲跌幅:\s*([+-]?\d+(?:\.\d+)?)%$/
-const stockLatestDividendPattern = /^最近一次股利:\s*([+-]?\d+(?:\.\d+)?)\s+\(([^)]+)\)$/
-const stockTrailingDividendPattern = /^近 12 個月股利合計:\s*([+-]?\d+(?:\.\d+)?)$/
-const stockDividendRecordPattern = /^-\s*([^:]+):\s*([+-]?\d+(?:\.\d+)?)$/
-const stockQueryErrorPattern = /^查詢\s+(.+?)\s+股價時發生錯誤，請稍後再試。$/
-const stockNotFoundPattern = /^找不到\s+(.+?)\s+的股價資料，請確認股票代號是否正確。$/
-const stockInvalidSymbolPattern = /^股票代號格式不正確/
-
-const parseStockReply = (text: string) => {
-  const lines = String(text ?? '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  if (lines.length < 3) return null
-
-  const headerMatch = lines[0].match(stockHeaderPattern)
-  const changeMatch = lines[1].match(stockChangePattern)
-  if (!headerMatch || !changeMatch) return null
-
-  const latestDividendMatch = lines.find((line) => line.startsWith('最近一次股利:'))?.match(stockLatestDividendPattern)
-  const trailingDividendMatch = lines.find((line) => line.startsWith('近 12 個月股利合計:'))?.match(stockTrailingDividendPattern)
-  const noDividendData = lines.includes('股利發放情況: 暫無股利資料')
-  const dividendRecords = lines
-    .map((line) => line.match(stockDividendRecordPattern))
-    .filter(Boolean)
-    .map((match) => ({
-      date: match![1],
-      amount: Number.parseFloat(match![2]),
-    }))
-
-  return {
-    symbol: headerMatch[1],
-    price: Number.parseFloat(headerMatch[2]),
-    changePercent: Number.parseFloat(changeMatch[1]),
-    latestDividend: latestDividendMatch
-      ? {
-          amount: Number.parseFloat(latestDividendMatch[1]),
-          date: latestDividendMatch[2],
-        }
-      : null,
-    trailingDividendTotal: trailingDividendMatch ? Number.parseFloat(trailingDividendMatch[1]) : null,
-    dividendRecords,
-    noDividendData,
-  }
-}
-
-const localizeStockText = (text: string) => {
-  const value = String(text ?? '').trim()
-  if (!value) return ''
-
-  const queryErrorMatch = value.match(stockQueryErrorPattern)
-  if (queryErrorMatch) {
-    return `${queryErrorMatch[1]} ${t('stockCardPending')}`
-  }
-
-  const notFoundMatch = value.match(stockNotFoundPattern)
-  if (notFoundMatch) {
-    return `${notFoundMatch[1]} ${t('stockCardNoDividends')}`
-  }
-
-  if (stockInvalidSymbolPattern.test(value)) {
-    return t('stockInvalidSymbol')
-  }
-
-  return text
-}
-
-const formatStockPreview = (text: string) => {
-  const stockReply = parseStockReply(text)
-  if (stockReply) {
-    return `${stockReply.symbol} ${stockReply.price.toLocaleString()}`
-  }
-
-  return localizeStockText(text)
-}
-
-const messageStockReply = (message: ChatMessage) => parseStockReply(message.text || '')
-const isStockPendingMessage = (message: ChatMessage) => message.is_pending || message.pending_id === STOCK_BOT_PENDING_ID
-const isStockBotRoom = (room: ConversationRecord | null) => room?.recipient_id === STOCK_BOT_ID
-const isStockBotMessage = (message: ChatMessage) => message.sender_id === STOCK_BOT_ID
 
 const openImagePreview = (message: ChatMessage) => {
   const url = messageAttachmentUrl(message)
@@ -913,7 +778,7 @@ const findRoomForVoiceSignal = (payload: { conversation_id?: string; sender_id?:
 
 const handleVoiceOffer = (payload: { conversation_id?: string; sender_id?: string; offer?: RTCSessionDescriptionInit }) => {
   const room = findRoomForVoiceSignal(payload)
-  if (!room || room.is_group || isStockBotRoom(room)) return
+  if (!room || room.is_group) return
   if (voiceCall.value.status !== 'idle') return
 
   pendingOfferRef.value = payload
@@ -962,7 +827,7 @@ const handleVoiceEnd = () => {
 
 const startVoiceCall = async () => {
   const room = selectedConversation.value
-  if (!room || room.is_group || isStockBotRoom(room) || voiceCall.value.status !== 'idle') return
+  if (!room || room.is_group || voiceCall.value.status !== 'idle') return
 
   try {
     cleanupVoiceCall()
@@ -1244,7 +1109,7 @@ const loadMessages = async (conversationId: string) => {
 
 const connectSocket = (conversation: ConversationRecord) => {
   closeSocket()
-  const url = new URL(`${WS_URL}/ws`)
+  const url = new URL(`${getWsUrl()}/ws`)
   url.searchParams.set('user_id', props.currentUser.id)
   url.searchParams.set('conversation_id', conversation.conversation_id)
 
@@ -1324,10 +1189,10 @@ const refreshAll = async () => {
     if (conversationsResult.status === 'fulfilled') conversations.value = conversationsResult.value
 
     if (!selectedConversationId.value && conversations.value.length > 0) {
-      selectedConversationId.value = stockBotConversation.value.conversation_id
+      selectedConversationId.value = conversations.value[0].conversation_id
     }
     if (!selectedConversationId.value) {
-      selectedConversationId.value = stockBotConversation.value.conversation_id
+      selectedConversationId.value = ''
     }
     if (pendingDirectConversation.value && !conversations.value.some((item) => item.conversation_id === pendingDirectConversation.value?.conversation_id)) {
       const recipientId = pendingDirectConversation.value.recipient_id
@@ -1350,12 +1215,14 @@ const refreshCurrentConversation = async () => {
 
 const selectConversation = (conversationId: string) => {
   if (!conversationId) return
+  moreOpen.value = false
   pendingDirectConversation.value = null
   selectedConversationId.value = conversationId
   clearFileAttachment()
 }
 
 const selectFriendConversation = (friendId: string) => {
+  moreOpen.value = false
   const conversationId = findConversationIdForFriend(friendId) || conversationIdFor(props.currentUser.id, friendId)
   const friend = friends.value.find((item) => item.friend_id === friendId)
   const user = users.value.find((item) => item.user_id === friendId)
@@ -1376,6 +1243,7 @@ const submitFriend = async () => {
       displayName: name,
     })
     friendName.value = ''
+    moreOpen.value = false
     await refreshAll()
   } catch (error) {
     console.error('Add friend failed:', error)
@@ -1449,6 +1317,7 @@ const submitGroup = async () => {
     })
     groupName.value = ''
     selectedGroupMemberIds.value = []
+    moreOpen.value = false
     await refreshAll()
   } catch (error) {
     console.error('Create group failed:', error)
@@ -1506,7 +1375,7 @@ const leaveExistingGroup = async (groupId: string) => {
 
 const sendMessage = async () => {
   const text = draft.value.trim()
-  const attachment = isStockBotRoom(selectedConversation.value) ? null : fileAttachment.value
+  const attachment = fileAttachment.value
   if (!text && !attachment) return
   if (!selectedConversation.value) return
   if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -1529,41 +1398,18 @@ const sendMessage = async () => {
         attachment_size: attachment?.size || 0,
       }),
     )
-    if (isStockBotRoom(selectedConversation.value) && text) {
-      messages.value = [
-        ...messages.value.filter((message) => message.pending_id !== STOCK_BOT_PENDING_ID),
-        {
-          sender: t('stockBotName'),
-          sender_id: STOCK_BOT_ID,
-          recipient_id: props.currentUser.id,
-          conversation_id: selectedConversation.value.conversation_id,
-          text,
-          time: new Date().toISOString(),
-          is_pending: true,
-          pending_id: STOCK_BOT_PENDING_ID,
-        },
-      ]
-    }
     draft.value = ''
     clearFileAttachment()
-    if (!isStockBotRoom(selectedConversation.value)) {
-      window.setTimeout(() => {
-        if (selectedConversation.value) {
-          loadMessages(selectedConversation.value.conversation_id).catch((error) => {
-            console.error('Reload messages failed:', error)
-          })
-        }
-      }, 300)
-    }
+    window.setTimeout(() => {
+      if (selectedConversation.value) {
+        loadMessages(selectedConversation.value.conversation_id).catch((error) => {
+          console.error('Reload messages failed:', error)
+        })
+      }
+    }, 300)
   } finally {
     isSending.value = false
   }
-}
-
-const sendQuickStockQuery = (symbol: string) => {
-  if (!symbol) return
-  draft.value = symbol
-  void sendMessage()
 }
 
 watch(selectedConversationId, async (conversationId) => {

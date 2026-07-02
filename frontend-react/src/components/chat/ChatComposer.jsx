@@ -248,12 +248,12 @@ export default function ChatComposer({
 
       <button
         type="submit"
-        className={`composer-submit-button ${variant === 'stock' ? 'composer-submit-search' : ''}`}
+        className="composer-submit-button"
         aria-label={submitLabel || t('chat.send')}
         title={submitLabel || t('chat.send')}
         disabled={!canSend || isProcessingFile}
       >
-        <span aria-hidden="true">{variant === 'stock' ? '⌕' : '↑'}</span>
+        <span aria-hidden="true">↑</span>
         <span className="composer-submit-label">{submitLabel || t('chat.send')}</span>
       </button>
     </form>

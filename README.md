@@ -1,6 +1,6 @@
 # Yuna IM Project
 
-Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 和內建行情小幫手組成。
+Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 組成。
 
 ## 快速啟動
 
@@ -26,16 +26,16 @@ docker compose up -d
 ## 架構總覽
 
 - `frontend-react`：React 前端，包含帳號建立、聊天、好友、管理台。
+- `frontend-vue`：Vue 3 前端，接同一組後端 API/WebSocket，提供平行實作。
 - `mobile-flutter`：Flutter mobile app，使用者端聊天，不包含後台管理。
 - `mobile-react-native`：React Native / Expo mobile app，使用者端聊天，不包含後台管理。
-- `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態、行情小幫手。
+- `backend-go`：HTTP API、WebSocket、MongoDB Change Stream hub、Redis 在線狀態。
 - MongoDB：儲存 users、messages、friends、friend_requests。
 - Redis：儲存短生命週期的在線狀態和連線數。
 
 ## 重要規則
 
 - MongoDB 必須以 replica set 模式執行，Change Stream 才會正常運作。
-- 行情小幫手聊天室只支援文字指令，不支援檔案附件。
 - 一般聊天支援檔案附件；圖片可 inline 顯示並點擊放大。
 - 附件目前以 data URL 存入 MongoDB，大小限制保守設定為 2 MB。
 - 超過 2 MB 的圖片會在前端嘗試自動壓縮；非圖片檔案不會自動壓縮。
@@ -50,6 +50,7 @@ docker compose up -d
 - [Project context](PROJECT_CONTEXT.md)
 - [Mobile API contract](docs/API_CONTRACT.md)
 - [Go chat backend context](backend-go/internal/chat/README.md)
+- [Vue frontend](frontend-vue/README.md)
 - [React frontend](frontend-react/README.md)
 - [Architecture decisions](docs/decisions)
 
@@ -78,7 +79,6 @@ git push origin main
 Mobile app 位於 `mobile-flutter/`。目前是使用者端聊天初版，支援：
 
 - 建立/登入使用者
-- 行情小幫手聊天室
 - 好友/對話列表載入
 - 歷史訊息載入
 - WebSocket 即時文字訊息
@@ -101,7 +101,6 @@ flutter run --dart-define=API_HOST=192.168.0.71
 React Native app 位於 `mobile-react-native/`。目前支援使用者端聊天初版：
 
 - 建立/登入使用者
-- 行情小幫手聊天室
 - 好友/對話列表載入
 - 歷史訊息載入
 - WebSocket 即時文字訊息

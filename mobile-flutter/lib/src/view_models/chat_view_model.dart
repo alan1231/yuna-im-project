@@ -92,16 +92,9 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> loadInitialChat(UserProfile profile) async {
-    final stockRoom = ChatRoom(
-      id: stockBotId,
-      name: stockBotName,
-      recipientId: stockBotId,
-      conversationId: conversationIdFor(profile.id, stockBotId),
-    );
-
     isLoadingChat = true;
-    rooms = [stockRoom];
-    activeRoom = stockRoom;
+    rooms = const [];
+    activeRoom = null;
     error = '';
     notifyListeners();
 
@@ -113,7 +106,7 @@ class ChatViewModel extends ChangeNotifier {
         _api.loadUsers(currentUserId: profile.id),
       ]);
 
-      final mergedRooms = <String, ChatRoom>{stockRoom.id: stockRoom};
+      final mergedRooms = <String, ChatRoom>{};
       for (final room in [
         ...results[0] as List<ChatRoom>,
         ...results[1] as List<ChatRoom>,
@@ -135,11 +128,13 @@ class ChatViewModel extends ChangeNotifier {
 
       rooms = _sortRooms(mergedRooms.values.toList());
       availableUsers = results[3] as List<ApiUser>;
-      activeRoom = mergedRooms[activeRoom?.id] ?? stockRoom;
+      activeRoom = rooms.isEmpty ? null : rooms.first;
       notifyListeners();
 
-      await loadMessagesForRoom(stockRoom);
-      _connectWebSocket(profile, stockRoom);
+      if (activeRoom != null) {
+        await loadMessagesForRoom(activeRoom!);
+        _connectWebSocket(profile, activeRoom!);
+      }
     } catch (_) {
       error = '聊天資料載入失敗。';
     } finally {
@@ -444,8 +439,6 @@ class ChatViewModel extends ChangeNotifier {
     sorted.sort((a, b) {
       final aTime = a.lastMessageAt?.millisecondsSinceEpoch ?? 0;
       final bTime = b.lastMessageAt?.millisecondsSinceEpoch ?? 0;
-      if (a.id == stockBotId && aTime == 0 && bTime == 0) return -1;
-      if (b.id == stockBotId && aTime == 0 && bTime == 0) return 1;
       return bTime.compareTo(aTime);
     });
     return sorted;

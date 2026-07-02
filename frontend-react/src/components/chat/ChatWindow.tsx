@@ -117,7 +117,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
           isConnected={isConnected}
           room={typedActiveRoom}
           memberNames={activeRoomMemberNames}
-          canStartVoiceCall={typedActiveRoom.id !== 'stock_bot' && !typedActiveRoom.isGroup && voiceCall.status === 'idle'}
+          canStartVoiceCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle'}
           onBack={() => setMobileView('rooms')}
           onLeaveGroup={() => leaveGroup(typedActiveRoom.id)}
           onStartVoiceCall={startVoiceCall}
@@ -144,23 +144,16 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         <MessageList
           messages={messages}
           activeRoom={typedActiveRoom}
-          isStockBotPending={isStockBotPending}
-          onQuickStockQuery={sendMessage}
         />
 
         <ChatComposer
           value={userInput}
           onChange={setUserInput}
           fileAttachment={fileAttachment}
-          allowAttachments={typedActiveRoom.id !== 'stock_bot'}
-          variant={typedActiveRoom.id === 'stock_bot' ? 'stock' : 'chat'}
+          allowAttachments
           canSend={canSend}
-          placeholder={
-            typedActiveRoom.id === 'stock_bot'
-              ? t('chat.stockPlaceholder')
-              : t('chat.messagePlaceholder', { name: typedActiveRoom.name })
-          }
-          submitLabel={typedActiveRoom.id === 'stock_bot' ? t('chat.query') : t('chat.send')}
+          placeholder={t('chat.messagePlaceholder', { name: typedActiveRoom.name })}
+          submitLabel={t('chat.send')}
           onAttachFile={attachFile}
           onClearFile={clearFileAttachment}
           onSend={sendMessage}

@@ -24,6 +24,20 @@
           </p>
         </div>
 
+        <div class="account-api-toggle">
+          <div class="account-api-toggle-copy">
+            <span>{{ t('apiEnvironment') }}</span>
+            <strong>{{ apiMode === 'local' ? t('apiModeLocal') : t('apiModeOnline') }}</strong>
+          </div>
+          <button
+            type="button"
+            class="account-api-toggle-button"
+            @click="toggleApiMode"
+          >
+            {{ t('switchApiMode') }}
+          </button>
+        </div>
+
         <div class="account-mode-switch">
           <button
             type="button"
@@ -70,6 +84,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { apiMode, toggleApiMode } from '../config/api'
 import { useI18n } from '../i18n'
 
 const props = defineProps<{

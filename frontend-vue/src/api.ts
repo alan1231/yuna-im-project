@@ -1,4 +1,4 @@
-import { API_URL } from './config/api'
+import { getApiUrl } from './config/api'
 import type {
   AdminStats,
   AdminUser,
@@ -31,7 +31,7 @@ const requestOk = async (input: RequestInfo | URL, init?: RequestInit): Promise<
 }
 
 const withUser = (path: string, userId?: string) => {
-  const url = new URL(`${API_URL}${path}`)
+  const url = new URL(`${getApiUrl()}${path}`)
   if (userId) {
     url.searchParams.set('user_id', userId)
   }
@@ -48,7 +48,7 @@ const adminHeaders = (token?: string) => {
 export const fetchUsers = (userId = '') => requestJson<ApiUser[]>(withUser('/users', userId))
 
 export const createUser = (payload: { userId: string; displayName: string }) =>
-  requestJson<ApiUser>(`${API_URL}/users`, {
+  requestJson<ApiUser>(`${getApiUrl()}/users`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -60,7 +60,7 @@ export const createUser = (payload: { userId: string; displayName: string }) =>
 export const fetchFriends = (userId: string) => requestJson<FriendRecord[]>(withUser('/friends', userId))
 
 export const addFriend = (payload: { userId: string; displayName: string }) =>
-  requestJson<unknown>(`${API_URL}/friends`, {
+  requestJson<unknown>(`${getApiUrl()}/friends`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -70,7 +70,7 @@ export const addFriend = (payload: { userId: string; displayName: string }) =>
   })
 
 export const deleteFriend = (payload: { userId: string; friendId: string }) =>
-  requestOk(`${API_URL}/friends/delete`, {
+  requestOk(`${getApiUrl()}/friends/delete`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -83,7 +83,7 @@ export const fetchFriendRequests = (userId: string) =>
   requestJson<FriendRequestRecord[]>(withUser('/friend-requests', userId))
 
 export const respondFriendRequest = (payload: { userId: string; requestId: string; accept: boolean }) =>
-  requestOk(`${API_URL}/friend-requests`, {
+  requestOk(`${getApiUrl()}/friend-requests`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -96,7 +96,7 @@ export const respondFriendRequest = (payload: { userId: string; requestId: strin
 export const fetchGroups = (userId: string) => requestJson<GroupRecord[]>(withUser('/groups', userId))
 
 export const createGroup = (payload: { userId: string; name: string; memberIds: string[] }) =>
-  requestJson<GroupRecord>(`${API_URL}/groups`, {
+  requestJson<GroupRecord>(`${getApiUrl()}/groups`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -107,7 +107,7 @@ export const createGroup = (payload: { userId: string; name: string; memberIds: 
   })
 
 export const leaveGroup = (payload: { userId: string; groupId: string }) =>
-  requestOk(`${API_URL}/groups/leave`, {
+  requestOk(`${getApiUrl()}/groups/leave`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -126,17 +126,17 @@ export const fetchMessages = (payload: { userId: string; conversationId: string 
 }
 
 export const wakeBackend = () =>
-  requestJson<{ status: string; time: string }>(`${API_URL}/health`, {
+  requestJson<{ status: string; time: string }>(`${getApiUrl()}/health`, {
     method: 'GET',
   })
 
 export const fetchAdminStats = (token?: string) =>
-  requestJson<AdminStats>(`${API_URL}/admin/stats`, {
+  requestJson<AdminStats>(`${getApiUrl()}/admin/stats`, {
     headers: adminHeaders(token),
   })
 
 export const fetchAdminUsers = (payload: { token?: string; q?: string; online?: boolean; limit?: number }) => {
-  const url = new URL(`${API_URL}/admin/users`)
+  const url = new URL(`${getApiUrl()}/admin/users`)
   if (payload.limit) url.searchParams.set('limit', String(payload.limit))
   if (payload.q) url.searchParams.set('q', payload.q)
   if (payload.online) url.searchParams.set('online', 'true')

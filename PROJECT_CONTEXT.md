@@ -9,7 +9,8 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 ## Architecture
 
 - `frontend-react`: React app for account setup, chat, friend management, and the admin console.
-- `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, admin endpoints, and the stock bot.
+- `frontend-vue`: Vue 3 parallel frontend that targets the same backend routes.
+- `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, and admin endpoints.
 - MongoDB: Durable storage for users, messages, friends, and friend requests.
 - Redis: Short-lived online presence and WebSocket connection counts.
 
@@ -25,7 +26,6 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 - User sends message in React through WebSocket.
 - Go trusts the WebSocket `user_id` query parameter as sender identity for now, recomputes `conversation_id`, and writes the message to MongoDB.
 - Go shared Change Stream hub watches MongoDB once per backend process and fans events out to matching WebSocket clients.
-- Go handles messages sent to `stock_bot`, queries Yahoo Finance chart data, and inserts a bot reply into MongoDB.
 - React keeps bounded in-memory message caches and reloads persisted history from `/messages` when needed.
 
 ## Current Priorities

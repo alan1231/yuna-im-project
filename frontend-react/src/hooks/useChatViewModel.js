@@ -17,11 +17,6 @@ import {
   wakeBackend as wakeBackendApi,
 } from '../api/chatApi'
 import { WS_URL } from '../config/api'
-import { resolveChangePercent } from '../utils/stockChange'
-
-const STOCK_BOT_ID = 'stock_bot'
-const STOCK_BOT_NAME = '行情小幫手'
-const STOCK_BOT_PENDING_ID = 'stock-bot-pending'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 const MAX_HANDLED_REQUEST_IDS = 100
@@ -54,13 +49,7 @@ const getTimeMs = (value) => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
-const sortRooms = (rooms) => {
-  return [...rooms].sort((a, b) => {
-    if (a.id === STOCK_BOT_ID && !b.lastMessageTimeMs) return -1
-    if (b.id === STOCK_BOT_ID && !a.lastMessageTimeMs) return 1
-    return (b.lastMessageTimeMs || 0) - (a.lastMessageTimeMs || 0)
-  })
-}
+const sortRooms = (rooms) => [...rooms].sort((a, b) => (b.lastMessageTimeMs || 0) - (a.lastMessageTimeMs || 0))
 const getMessageKey = (message) => {
   return [
     message.senderId,
@@ -85,7 +74,7 @@ const normalizeIncomingMessage = (data, currentUserId) => {
       : rawConversationId
 
   return {
-    sender: data.sender || STOCK_BOT_NAME,
+    sender: data.sender || '',
     senderId,
     recipientId,
     conversationId,
@@ -95,7 +84,6 @@ const normalizeIncomingMessage = (data, currentUserId) => {
     attachmentName: data.attachment_name || data.attachmentName || data.image_name || data.imageName || '',
     attachmentType: data.attachment_type || data.attachmentType || data.image_type || data.imageType || '',
     attachmentSize: data.attachment_size || data.attachmentSize || data.image_size || data.imageSize || 0,
-    changePercent: resolveChangePercent(data),
     sentAt: data.sentAt || data.time || getCurrentTime(),
     readAt,
   }
@@ -155,35 +143,9 @@ const createGroupRoom = (group, t) => ({
 export const useChatViewModel = (currentUser) => {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const defaultRooms = useMemo(
-    () => [
-      {
-        id: STOCK_BOT_ID,
-        name: t('chat.stockBotName'),
-        description: t('chat.stockBotDescription'),
-        initials: t('chat.stockBotInitial'),
-        recipientId: STOCK_BOT_ID,
-        isFriend: false,
-      },
-    ],
-    [t],
-  )
-  const initialRooms = useMemo(
-    () =>
-      defaultRooms.map((room) => ({
-        ...room,
-        conversationId: getConversationId(currentUser.id, room.recipientId),
-        lastMessage: '',
-        lastMessageAt: '',
-        lastMessageTimeMs: 0,
-        lastMessageIsSelf: false,
-        lastMessageReadAt: '',
-        unreadCount: 0,
-      })),
-    [currentUser.id, defaultRooms],
-  )
+  const initialRooms = useMemo(() => [], [])
   const [rooms, setRooms] = useState(initialRooms)
-  const [activeRoomId, setActiveRoomId] = useState(STOCK_BOT_ID)
+  const [activeRoomId, setActiveRoomId] = useState('')
   const [availableUsers, setAvailableUsers] = useState([])
   const [messagesByConversation, setMessagesByConversation] = useState(
     Object.fromEntries(initialRooms.map((room) => [room.conversationId, []])),
@@ -222,8 +184,7 @@ export const useChatViewModel = (currentUser) => {
     [activeRoomId, rooms],
   )
   const messages = messagesByConversation[activeRoom?.conversationId] || []
-  const isStockBotPending = activeRoom?.id === STOCK_BOT_ID && messages.some((message) => message.isPending)
-  const canSend = (userInput.trim().length > 0 || Boolean(fileAttachment)) && !isStockBotPending
+  const canSend = userInput.trim().length > 0 || Boolean(fileAttachment)
 
   useEffect(() => {
     roomsRef.current = rooms
@@ -250,7 +211,6 @@ export const useChatViewModel = (currentUser) => {
 
     const protectedConversationIds = new Set([
       getActiveRoom()?.conversationId,
-      getConversationId(currentUser.id, STOCK_BOT_ID),
     ])
     const candidates = conversationIds
       .filter((conversationId) => !protectedConversationIds.has(conversationId))
@@ -358,7 +318,7 @@ export const useChatViewModel = (currentUser) => {
     if (keys.has(messageKey)) return
     keys.add(messageKey)
 
-    if (!isGroupMessage && otherUserId && otherUserId !== STOCK_BOT_ID) {
+    if (!isGroupMessage && otherUserId) {
       const knownName =
         availableUsersRef.current.find((item) => item.user_id === otherUserId)?.display_name || ''
       appendRoom({
@@ -373,12 +333,7 @@ export const useChatViewModel = (currentUser) => {
     }
 
     setMessagesByConversation((currentMessages) => {
-      let conversationMessages = currentMessages[conversationId] || []
-      if (message.senderId === STOCK_BOT_ID) {
-        conversationMessages = conversationMessages.filter(
-          (item) => item.pendingId !== STOCK_BOT_PENDING_ID,
-        )
-      }
+      const conversationMessages = currentMessages[conversationId] || []
 
       const nextConversationMessages = [...conversationMessages, message].slice(-MAX_MESSAGES_PER_CONVERSATION)
       if (nextConversationMessages.length !== conversationMessages.length + 1) {
@@ -646,7 +601,7 @@ export const useChatViewModel = (currentUser) => {
 
   const handleVoiceOffer = useCallback((payload) => {
     const room = findRoomForVoiceSignal(payload)
-    if (!room || room.isGroup || room.id === STOCK_BOT_ID) return
+    if (!room || room.isGroup) return
 
     pendingOfferRef.current = payload
     startIncomingRingtone()
@@ -685,7 +640,7 @@ export const useChatViewModel = (currentUser) => {
 
   const startVoiceCall = useCallback(async () => {
     const room = getActiveRoom()
-    if (!room || room.id === STOCK_BOT_ID || room.isGroup) return
+    if (!room || room.isGroup) return
 
     try {
       cleanupVoiceCall()
@@ -940,20 +895,17 @@ export const useChatViewModel = (currentUser) => {
         queryFn: () => fetchConversations(currentUser.id),
       })
       conversations.forEach((conversation) => {
-        const isStockBot = conversation.recipient_id === STOCK_BOT_ID
         const isGroup = Boolean(conversation.is_group)
-        const displayName = isStockBot ? t('chat.stockBotName') : conversation.display_name
+        const displayName = conversation.display_name
         appendRoom({
           id: conversation.recipient_id,
           name: displayName,
-          description: isStockBot
-            ? t('chat.stockBotDescription')
-            : isGroup
-              ? t('chat.group')
-              : conversation.is_friend
-              ? t('chat.friend')
-              : t('chat.conversation'),
-          initials: isStockBot ? t('chat.stockBotInitial') : getInitials(displayName),
+          description: isGroup
+            ? t('chat.group')
+            : conversation.is_friend
+            ? t('chat.friend')
+            : t('chat.conversation'),
+          initials: getInitials(displayName),
           recipientId: conversation.recipient_id,
           conversationId: conversation.conversation_id,
           isFriend: Boolean(conversation.is_friend),
@@ -1028,7 +980,7 @@ export const useChatViewModel = (currentUser) => {
       messageKeysByConversationRef.current.delete(room.conversationId)
       conversationCacheAccessRef.current.delete(room.conversationId)
 
-      const fallbackRoom = roomsRef.current.find((item) => item.id === STOCK_BOT_ID) || initialRooms[0]
+      const fallbackRoom = roomsRef.current[0] || initialRooms[0]
       activeRoomIdRef.current = fallbackRoom.id
       setActiveRoomId(fallbackRoom.id)
       setUserInput('')
@@ -1198,30 +1150,6 @@ export const useChatViewModel = (currentUser) => {
     setFileAttachment(null)
   }
 
-  const showStockBotPending = useCallback((conversationId) => {
-    setMessagesByConversation((currentMessages) => {
-      const currentConversationMessages = currentMessages[conversationId] || []
-      const nextConversationMessages = [
-        ...currentConversationMessages.filter((message) => message.pendingId !== STOCK_BOT_PENDING_ID),
-        {
-          sender: STOCK_BOT_NAME,
-          senderId: STOCK_BOT_ID,
-          recipientId: currentUser.id,
-          conversationId,
-          text: '',
-          sentAt: getCurrentTime(),
-          isPending: true,
-          pendingId: STOCK_BOT_PENDING_ID,
-        },
-      ]
-      touchConversationCache(conversationId)
-      return {
-        ...currentMessages,
-        [conversationId]: nextConversationMessages,
-      }
-    })
-  }, [currentUser.id, touchConversationCache])
-
   const sendMessage = useCallback((presetText = '') => {
     const text = String(presetText || userInput).trim()
     const attachment = presetText ? null : fileAttachment
@@ -1248,12 +1176,9 @@ export const useChatViewModel = (currentUser) => {
         attachment_size: attachment?.size || 0,
       }),
     )
-    if (room.recipientId === STOCK_BOT_ID && text) {
-      showStockBotPending(room.conversationId)
-    }
     setUserInput('')
     setFileAttachment(null)
-  }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, showStockBotPending, t, userInput])
+  }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, t, userInput])
 
   useEffect(() => {
     let isActive = true

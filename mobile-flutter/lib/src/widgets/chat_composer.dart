@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../core/config.dart';
 import '../models/chat_room.dart';
 
 class ChatComposer extends StatefulWidget {
@@ -30,11 +29,7 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   Widget build(BuildContext context) {
-    final room = widget.activeRoom;
     final colorScheme = Theme.of(context).colorScheme;
-    final placeholder = room?.id == stockBotId
-        ? '輸入股票代號，例如 2330、\$TSM'
-        : '輸入訊息';
 
     return SafeArea(
       top: false,
@@ -64,7 +59,7 @@ class _ChatComposerState extends State<ChatComposer> {
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
                     decoration: InputDecoration(
-                      hintText: placeholder,
+                      hintText: '輸入訊息',
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(

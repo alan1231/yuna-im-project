@@ -18,7 +18,7 @@ export function useAccountViewModel(
     mode === 'login'
       ? {
           title: '登入帳號',
-          body: '輸入既有顯示名稱，回到你的聊天與行情小幫手。',
+          body: '輸入既有顯示名稱，回到你的聊天。',
           submit: '登入',
         }
       : {

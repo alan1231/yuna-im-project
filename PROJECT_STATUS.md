@@ -34,10 +34,10 @@ git push origin main
 ## Current Deployment
 
 - Frontend: Vercel, repo root directory `frontend-react`.
+- Vue frontend prototype added in `frontend-vue/` for local/dev comparison.
 - Go API/WebSocket: Render, repo root directory `backend-go`.
 - MongoDB: MongoDB Atlas M0.
 - Redis: Upstash Redis with TLS.
-- Stock bot: built into the Go API/WebSocket service.
 
 ## Production URLs
 
@@ -52,8 +52,6 @@ git push origin main
 - Go backend deploys on Render and connects to MongoDB Atlas.
 - Go Redis config supports Upstash TLS through `REDIS_USERNAME` and `REDIS_TLS`.
 - React frontend deploys on Vercel and reads API endpoints from Vite env vars.
-- Go stock bot handles `stock_bot` messages directly and writes replies into MongoDB.
-- Stock bot chat now shows a three-dot pending state after sending a query.
 
 ## Follow-Ups
 

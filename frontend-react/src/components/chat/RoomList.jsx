@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
-import { formatStockPreview } from '../../utils/stockReply'
 
 const friendFormSchema = z.object({
   friendName: z.string().trim().min(1).max(32),
@@ -38,7 +37,6 @@ const formatPresence = (room, t, language) => {
 
 const formatRoomPreview = (room, t) => {
   const preview = room.lastMessage || room.description
-  if (room.id === 'stock_bot') return formatStockPreview(preview, t)
   if (preview === '已傳送檔案' || preview === 'Sent a file') return t('chat.sentAttachment')
   return preview
 }
@@ -103,7 +101,7 @@ export default function RoomList({
   }, [availableUsers, normalizedSearch, rooms])
 
   const friendRooms = useMemo(() => {
-    return rooms.filter((room) => room.id !== 'stock_bot' && room.isFriend && !room.isGroup)
+    return rooms.filter((room) => room.isFriend && !room.isGroup)
   }, [rooms])
 
   const visibleFriendRooms = useMemo(() => {

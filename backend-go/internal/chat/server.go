@@ -28,7 +28,6 @@ const (
 	friendsName        = "friends"
 	friendRequestsName = "friend_requests"
 	groupsName         = "groups"
-	stockBotID         = "stock_bot"
 )
 
 var databaseName = defaultDatabaseName
@@ -1037,13 +1036,10 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			msg["conversation_id"] = conversationIDFor(userID, recipientID)
 		}
 
-		result, err := collection.InsertOne(ctx, msg)
+		_, err := collection.InsertOne(ctx, msg)
 		if err != nil {
 			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
 			return
-		}
-		if recipientID == stockBotID {
-			go processStockBotMessage(context.Background(), client, msg, result.InsertedID)
 		}
 
 		fmt.Printf("收到訊息並存入資料庫: %v\n", msg["text"])
@@ -1227,60 +1223,6 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 	}
 }
 
-func handleStockQuote(w http.ResponseWriter, r *http.Request) {
-	applyCORS(w)
-
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	rawSymbol := strings.TrimSpace(r.URL.Query().Get("symbol"))
-	if rawSymbol == "" {
-		http.Error(w, "symbol is required", http.StatusBadRequest)
-		return
-	}
-
-	symbol, validationError := parseStockCommand(rawSymbol)
-	if validationError != "" || symbol == "" {
-		http.Error(w, "invalid symbol", http.StatusBadRequest)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), stockBotRequestTimeout)
-	defer cancel()
-
-	normalizedSymbol := normalizeStockSymbol(symbol)
-	stock, err := fetchStockData(ctx, normalizedSymbol)
-	response := stockQuoteResponse{
-		Symbol:        normalizedSymbol,
-		Status:        stock.Status,
-		Price:         stock.Price,
-		ChangePct:     stock.ChangePct,
-		DividendCount: len(stock.Dividends),
-		Source:        stock.Source,
-	}
-	if err != nil {
-		response.Status = "error"
-		response.Error = err.Error()
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	statusCode := http.StatusOK
-	if response.Status != "ok" {
-		statusCode = http.StatusBadGateway
-	}
-	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("股票查詢診斷回應 JSON 失敗: %v", err)
-	}
-}
-
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	applyCORS(w)
 
@@ -1342,10 +1284,6 @@ func loadFriendNames(ctx context.Context, client *mongo.Client, userID string) m
 }
 
 func lookupDisplayName(ctx context.Context, client *mongo.Client, userID string) string {
-	if userID == "stock_bot" {
-		return "行情小幫手"
-	}
-
 	var user userResponse
 	err := client.Database(databaseName).Collection(usersName).
 		FindOne(ctx, bson.M{"user_id": userID}).
@@ -1594,9 +1532,6 @@ func Run(cfg Config) error {
 	})
 	mux.HandleFunc("/conversations", func(w http.ResponseWriter, r *http.Request) {
 		handleConversations(w, r, client)
-	})
-	mux.HandleFunc("/stock/quote", func(w http.ResponseWriter, r *http.Request) {
-		handleStockQuote(w, r)
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		handleHealth(w, r)

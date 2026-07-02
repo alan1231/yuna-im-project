@@ -18,10 +18,6 @@ MongoDB stores durable chat data. Redis stores short-lived presence state such a
 
 When `ADMIN_TOKEN` is set, admin APIs require either `X-Admin-Token: <token>` or `Authorization: Bearer <token>`.
 
-Messages sent to `stock_bot` are handled by the Go service. The server parses
-stock symbols, fetches Yahoo Finance chart data, and writes the bot reply back
-to MongoDB so the existing WebSocket fanout can deliver it to the user.
-
 ## Admin APIs
 
 ```text

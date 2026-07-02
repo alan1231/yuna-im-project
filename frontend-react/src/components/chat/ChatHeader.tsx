@@ -22,7 +22,7 @@ export default function ChatHeader({
 }: ChatHeaderProps) {
   const { t } = useTranslation()
   const isGroup = Boolean(room.isGroup)
-  const eyebrow = room.id === 'stock_bot' ? t('chat.marketChat') : isGroup ? t('chat.groupChat') : t('chat.directMessage')
+  const eyebrow = isGroup ? t('chat.groupChat') : t('chat.directMessage')
   const memberSummary = isGroup ? memberNames.join(', ') : ''
 
   return (
