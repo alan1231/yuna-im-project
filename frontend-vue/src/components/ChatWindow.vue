@@ -1,6 +1,9 @@
 <template>
   <section class="chat-page">
-    <div class="chat-shell">
+    <div
+      class="chat-shell"
+      :class="isMobileViewport ? (mobileView === 'rooms' ? 'chat-shell-mobile-list' : 'chat-shell-mobile-chat') : ''"
+    >
       <aside class="chat-sidebar">
         <div class="chat-sidebar-top">
           <div>
@@ -218,12 +221,22 @@
       <main class="chat-main">
         <template v-if="selectedConversation">
           <header class="chat-header">
-            <div>
-              <p class="eyebrow">
-                {{ selectedConversation.is_group ? t('groups') : t('chatTitle') }}
-              </p>
-              <h2>{{ selectedConversation.display_name }}</h2>
-              <p class="chat-header-meta">{{ selectedConversation.last_message || t('emptyConversation') }}</p>
+            <div class="chat-header-main">
+              <button
+                type="button"
+                class="chat-back-button"
+                :aria-label="t('backToRooms')"
+                @click="mobileView = 'rooms'"
+              >
+                ‹
+              </button>
+              <div>
+                <p class="eyebrow">
+                  {{ selectedConversation.is_group ? t('groups') : t('chatTitle') }}
+                </p>
+                <h2>{{ selectedConversation.display_name }}</h2>
+                <p class="chat-header-meta">{{ selectedConversation.last_message || t('emptyConversation') }}</p>
+              </div>
             </div>
             <div class="chat-header-actions">
               <span class="muted-pill">{{ selectedConversation.is_group ? 'Group' : 'Direct' }}</span>
@@ -473,6 +486,21 @@ const isProcessingFile = ref(false)
 const connectionState = ref<'idle' | 'connecting' | 'open' | 'error'>('idle')
 const moreOpen = ref(false)
 const morePanel = ref<'friends' | 'friendRequests' | 'addFriend' | 'groups' | 'createGroup'>('friends')
+const mobileView = ref<'rooms' | 'chat'>('rooms')
+const isMobileViewport = ref(false)
+let mobileQuery: MediaQueryList | null = null
+let hasSyncedMobileViewport = false
+const syncMobileViewport = () => {
+  const nextIsMobile = mobileQuery?.matches ?? false
+  if (nextIsMobile && hasSyncedMobileViewport && !isMobileViewport.value) {
+    mobileView.value = 'chat'
+  }
+  if (!nextIsMobile) {
+    mobileView.value = 'rooms'
+  }
+  isMobileViewport.value = nextIsMobile
+  hasSyncedMobileViewport = true
+}
 const messagesViewport = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const remoteAudioElement = ref<HTMLAudioElement | null>(null)
@@ -1219,6 +1247,9 @@ const selectConversation = (conversationId: string) => {
   pendingDirectConversation.value = null
   selectedConversationId.value = conversationId
   clearFileAttachment()
+  if (isMobileViewport.value) {
+    mobileView.value = 'chat'
+  }
 }
 
 const selectFriendConversation = (friendId: string) => {
@@ -1229,6 +1260,9 @@ const selectFriendConversation = (friendId: string) => {
   pendingDirectConversation.value = buildDirectConversation(friendId, friend?.display_name || user?.display_name || friendId)
   selectedConversationId.value = conversationId
   clearFileAttachment()
+  if (isMobileViewport.value) {
+    mobileView.value = 'chat'
+  }
 }
 
 const submitFriend = async () => {
@@ -1431,10 +1465,15 @@ watch(selectedConversationId, async (conversationId) => {
 })
 
 onMounted(async () => {
+  mobileQuery = window.matchMedia('(max-width: 760px)')
+  syncMobileViewport()
+  mobileQuery.addEventListener('change', syncMobileViewport)
+
   await refreshAll()
 })
 
 onBeforeUnmount(() => {
+  mobileQuery?.removeEventListener('change', syncMobileViewport)
   closeSocket()
 })
 </script>

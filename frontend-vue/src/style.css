@@ -478,6 +478,30 @@ a {
   gap: 16px;
 }
 
+.chat-header-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-back-button {
+  display: none;
+  width: 38px;
+  height: 38px;
+  color: var(--muted);
+  background: transparent;
+  border-radius: 8px;
+  font-size: 34px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat-back-button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .chat-sidebar-top h2,
 .admin-header h1 {
   font-size: clamp(1.7rem, 4vw, 2.4rem);
@@ -1349,6 +1373,32 @@ a {
   font-size: 12px;
 }
 
+.admin-user-id-toggle {
+  width: fit-content;
+  margin-top: 2px;
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.admin-user-id {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.admin-action-cell {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .admin-user-avatar {
   width: 40px;
   height: 40px;
@@ -1380,6 +1430,25 @@ a {
   border-color: rgba(34, 197, 94, 0.18);
 }
 
+.admin-delete-button {
+  min-height: 32px;
+  padding: 0 12px;
+  color: #fecdd3;
+  background: rgba(251, 113, 133, 0.12);
+  border: 1px solid rgba(251, 113, 133, 0.22);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.admin-delete-button:hover:not(:disabled) {
+  background: rgba(251, 113, 133, 0.18);
+}
+
+.admin-delete-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .table-empty {
   padding: 24px 16px;
   color: var(--muted);
@@ -1387,8 +1456,7 @@ a {
 }
 
 @media (max-width: 1080px) {
-  .account-entry,
-  .chat-shell {
+  .account-entry {
     grid-template-columns: 1fr;
   }
 
@@ -1399,7 +1467,6 @@ a {
 
 @media (max-width: 760px) {
   .account-screen,
-  .chat-page,
   .admin-page {
     padding-inline: 14px;
     padding-top: 68px;
@@ -1407,8 +1474,6 @@ a {
 
   .account-brand,
   .account-panel,
-  .chat-sidebar,
-  .chat-main,
   .admin-header,
   .admin-controls,
   .stats-grid,
@@ -1429,20 +1494,94 @@ a {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+@media (max-width: 640px) {
+  .chat-page {
+    padding-inline: 14px;
+    padding-top: 68px;
+  }
+
+  .chat-sidebar,
+  .chat-main {
+    padding: 16px;
+  }
+
+  .chat-shell {
+    width: 100%;
+    height: 100svh;
+    min-height: calc(100svh - 68px);
+    margin: 0;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .chat-shell-mobile-list .chat-main {
+    display: none;
+  }
+
+  .chat-shell-mobile-chat .chat-sidebar {
+    display: none;
+  }
+
+  .chat-header {
+    padding: 12px 16px 8px;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .chat-back-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chat-header-actions {
+    width: 100%;
+    padding-left: 48px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .chat-header h2 {
+    font-size: 24px;
+  }
+
+  .chat-header-meta {
+    max-width: calc(100vw - 112px);
+    font-size: 13px;
+  }
 
   .voice-call-bar {
     grid-template-columns: 1fr;
+    padding-inline: 16px;
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .conversation-item {
     grid-template-columns: 44px minmax(0, 1fr) auto;
   }
 
+  .message-list {
+    padding-inline: 16px;
+  }
+
   .message-bubble {
-    max-width: 100%;
+    max-width: 88%;
+  }
+
+  .voice-call-actions {
+    width: 100%;
+  }
+
+  .voice-call-actions button {
+    flex: 1;
   }
 
   .composer {
+    padding: 10px 16px 16px;
     grid-template-columns: 1fr auto;
   }
 }

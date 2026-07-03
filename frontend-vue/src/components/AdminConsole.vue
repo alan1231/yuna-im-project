@@ -8,7 +8,6 @@
           <p class="admin-copy">{{ t('adminSubtitle') }}</p>
         </div>
         <div class="admin-header-actions">
-          <RouterLink class="ghost-button" to="/">← {{ t('navChat') }}</RouterLink>
           <button class="primary-button" type="button" @click="refreshAll">{{ t('refresh') }}</button>
         </div>
       </header>
@@ -97,14 +96,15 @@
                   <th>{{ t('status') }}</th>
                   <th>{{ t('adminCreatedAt') }}</th>
                   <th>{{ t('lastSeen') }}</th>
+                  <th>{{ t('adminAction') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="isLoading && !users.length">
-                  <td colspan="4" class="table-empty">{{ t('adminLoading') }}</td>
+                  <td colspan="5" class="table-empty">{{ t('adminLoading') }}</td>
                 </tr>
                 <tr v-else-if="!users.length">
-                  <td colspan="4" class="table-empty">{{ t('adminEmpty') }}</td>
+                  <td colspan="5" class="table-empty">{{ t('adminEmpty') }}</td>
                 </tr>
                 <tr v-for="user in users" :key="user.user_id">
                   <td>
@@ -114,7 +114,16 @@
                       </span>
                       <div>
                         <strong>{{ user.display_name }}</strong>
-                        <span>{{ user.user_id }}</span>
+                        <button
+                          class="admin-user-id-toggle"
+                          type="button"
+                          @click="toggleUserId(user.user_id)"
+                        >
+                          {{ revealedUserId === user.user_id ? t('adminHideId') : t('adminShowId') }}
+                        </button>
+                        <span v-if="revealedUserId === user.user_id" class="admin-user-id">
+                          {{ user.user_id }}
+                        </span>
                       </div>
                     </div>
                   </td>
@@ -125,6 +134,18 @@
                   </td>
                   <td>{{ formatDate(user.created_at) }}</td>
                   <td>{{ formatDate(user.last_seen) }}</td>
+                  <td>
+                    <div class="admin-action-cell">
+                      <button
+                        class="admin-delete-button"
+                        type="button"
+                        :disabled="deletingUserId === user.user_id"
+                        @click="deleteUser(user)"
+                      >
+                        {{ deletingUserId === user.user_id ? t('adminDeleting') : t('adminDelete') }}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -137,8 +158,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
-import { fetchAdminStats, fetchAdminUsers } from '../api'
+import { deleteAdminUser, fetchAdminStats, fetchAdminUsers } from '../api'
 import { useI18n } from '../i18n'
 import type { AdminStats, AdminUser } from '../types'
 
@@ -152,6 +172,8 @@ const stats = ref<AdminStats | null>(null)
 const users = ref<AdminUser[]>([])
 const error = ref('')
 const isLoading = ref(false)
+const deletingUserId = ref('')
+const revealedUserId = ref('')
 
 const readToken = () => {
   if (typeof window === 'undefined') return ''
@@ -191,6 +213,12 @@ const normalizeAdminError = (reason: unknown) => {
   return t('adminLoadFailed')
 }
 
+const normalizeDeleteError = (reason: unknown) => {
+  const message = reason instanceof Error ? reason.message : String(reason)
+  if (message.includes('401')) return t('adminUnauthorized')
+  return t('adminDeleteFailed')
+}
+
 const refreshAll = async () => {
   isLoading.value = true
   error.value = ''
@@ -227,6 +255,31 @@ const searchUsers = async () => {
 const toggleOnlineOnly = async () => {
   onlineOnly.value = !onlineOnly.value
   await refreshAll()
+}
+
+const toggleUserId = (userId: string) => {
+  revealedUserId.value = revealedUserId.value === userId ? '' : userId
+}
+
+const deleteUser = async (user: AdminUser) => {
+  if (deletingUserId.value) return
+  if (!window.confirm(t('adminDeleteConfirm', { name: user.display_name }))) return
+
+  deletingUserId.value = user.user_id
+  error.value = ''
+
+  try {
+    await deleteAdminUser({
+      token: adminToken.value,
+      userId: user.user_id,
+    })
+    await refreshAll()
+  } catch (reason) {
+    console.error('Admin delete user failed:', reason)
+    error.value = normalizeDeleteError(reason)
+  } finally {
+    deletingUserId.value = ''
+  }
 }
 
 onMounted(async () => {
