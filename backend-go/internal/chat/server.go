@@ -309,7 +309,7 @@ func groupConversationID(groupID string, memberIDs []string) string {
 // X-Admin-Token/Authorization for browser preflight.
 func applyCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token")
 }
 

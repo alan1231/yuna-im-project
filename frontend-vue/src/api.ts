@@ -1,4 +1,4 @@
-import { getApiUrl } from './config/api'
+import { getAdminApiUrl, getApiUrl } from './config/api'
 import type {
   AdminStats,
   AdminUser,
@@ -131,17 +131,27 @@ export const wakeBackend = () =>
   })
 
 export const fetchAdminStats = (token?: string) =>
-  requestJson<AdminStats>(`${getApiUrl()}/admin/stats`, {
+  requestJson<AdminStats>(`${getAdminApiUrl()}/admin/stats`, {
     headers: adminHeaders(token),
   })
 
 export const fetchAdminUsers = (payload: { token?: string; q?: string; online?: boolean; limit?: number }) => {
-  const url = new URL(`${getApiUrl()}/admin/users`)
+  const url = new URL(`${getAdminApiUrl()}/admin/users`)
   if (payload.limit) url.searchParams.set('limit', String(payload.limit))
   if (payload.q) url.searchParams.set('q', payload.q)
   if (payload.online) url.searchParams.set('online', 'true')
 
   return requestJson<AdminUser[]>(url, {
+    headers: adminHeaders(payload.token),
+  })
+}
+
+export const deleteAdminUser = (payload: { token?: string; userId: string }) => {
+  const url = new URL(`${getAdminApiUrl()}/admin/users`)
+  url.searchParams.set('user_id', payload.userId)
+
+  return requestOk(url, {
+    method: 'DELETE',
     headers: adminHeaders(payload.token),
   })
 }

@@ -10,7 +10,7 @@ This package owns the Go side of the IM system.
 - Redis-backed presence and MongoDB presence snapshots.
 - MongoDB indexes for chat read paths.
 - Read receipts.
-- Admin stats and admin user list endpoints.
+- Admin stats, admin user list, and admin-only user deletion endpoints.
 
 ## Non-Responsibilities
 
@@ -25,7 +25,7 @@ This package owns the Go side of the IM system.
 - `presence.go`: Redis connection counts and online TTLs.
 - `indexes.go`: MongoDB indexes used by chat and admin queries.
 - `config.go`: environment-backed runtime config.
-- `admin.go`: read-only admin endpoints and token gate.
+- `admin.go`: admin endpoints for stats, users, deletion, and token gate.
 - `models.go`: request and response DTOs.
 
 ## Design Notes
@@ -34,4 +34,3 @@ This package owns the Go side of the IM system.
 - Each WebSocket client has a bounded send channel so a slow browser does not block the whole hub.
 - The frontend sends `active_conversation` control messages over WebSocket so Go can mark the currently open room as read.
 - `conversation_id` must be recomputed server-side with `conversationIDFor`; do not trust a client-supplied value for new messages.
-

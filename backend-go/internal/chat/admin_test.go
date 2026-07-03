@@ -66,3 +66,10 @@ func TestMapKeys(t *testing.T) {
 		t.Fatalf("keys = %#v", keys)
 	}
 }
+
+func TestRemoveString(t *testing.T) {
+	got := removeString([]string{"user_a", "user_b", "user_a"}, "user_a")
+	if len(got) != 1 || got[0] != "user_b" {
+		t.Fatalf("removeString() = %#v, want [user_b]", got)
+	}
+}

@@ -35,6 +35,14 @@ export const getApiUrl = () => {
   return API_BASES[apiMode.value].replace(/\/$/, '')
 }
 
+export const getAdminApiUrl = () => {
+  if (import.meta.env.DEV) {
+    return `${window.location.origin}/api`
+  }
+
+  return API_BASES.online.replace(/\/$/, '')
+}
+
 export const getWsUrl = () => {
   if (apiMode.value === 'online' && import.meta.env.DEV) {
     return `${window.location.origin.replace(/^http/, 'ws')}`
