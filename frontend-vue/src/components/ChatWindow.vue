@@ -1,228 +1,97 @@
 <template>
-  <section class="chat-page">
+  <section class="chat-page chat-app">
+    <LanguageSwitcher />
     <div
-      class="chat-shell"
-      :class="isMobileViewport ? (mobileView === 'rooms' ? 'chat-shell-mobile-list' : 'chat-shell-mobile-chat') : ''"
+      class="chat-app-shell"
+      :class="{
+        'chat-app-mobile-list': isMobileViewport && mobileView === 'rooms',
+        'chat-app-mobile-chat': isMobileViewport && mobileView === 'chat',
+      }"
     >
-      <aside class="chat-sidebar">
-        <div class="chat-sidebar-top">
+      
+      <aside class="chat-library">
+        <header class="chat-library-header">
           <div>
-            <p class="eyebrow">{{ t('brand') }}</p>
+            <p class="eyebrow">Conversations</p>
             <h2>{{ t('chatTitle') }}</h2>
           </div>
-          <button class="ghost-button" type="button" @click="emit('logout')">
-            {{ t('logout') }}
-          </button>
-        </div>
+          <button class="chat-logout" type="button" @click="emit('logout')">{{ t('logout') }}</button>
+        </header>
 
-        <p v-if="actionError" class="account-message account-message-error">
-          {{ actionError }}
-        </p>
+        <label class="chat-search">
+          <span class="sr-only">{{ t('search') }}</span>
+          <input
+            v-model="searchQuery"
+            type="search"
+            :placeholder="t('adminSearchPlaceholder')"
+          />
+        </label>
 
-        <div class="sidebar-more">
-          <button type="button" class="sidebar-more-summary" @click="moreOpen = !moreOpen">
-            <span>{{ t('more') }}</span>
-            <span class="sidebar-more-icon">☰</span>
-          </button>
+        <p v-if="actionError" class="chat-alert">{{ actionError }}</p>
 
-          <div v-if="moreOpen" class="sidebar-more-panel">
-            <div class="sidebar-more-menu">
-              <button
-                type="button"
-                class="sidebar-more-option"
-                :class="{ active: morePanel === 'friends' }"
-                @click="morePanel = 'friends'"
-              >
-                <span>{{ t('friends') }}</span>
-                <small>{{ friends.length }}</small>
-              </button>
-              <button
-                type="button"
-                class="sidebar-more-option"
-                :class="{ active: morePanel === 'friendRequests' }"
-                @click="morePanel = 'friendRequests'"
-              >
-                <span>{{ t('friendRequests') }}</span>
-                <small>{{ friendRequests.length }}</small>
-              </button>
-              <button
-                type="button"
-                class="sidebar-more-option"
-                :class="{ active: morePanel === 'addFriend' }"
-                @click="morePanel = 'addFriend'"
-              >
-                <span>{{ t('addFriend') }}</span>
-                <small>+</small>
-              </button>
-              <button
-                type="button"
-                class="sidebar-more-option"
-                :class="{ active: morePanel === 'groups' }"
-                @click="morePanel = 'groups'"
-              >
-                <span>{{ t('groups') }}</span>
-                <small>{{ groups.length }}</small>
-              </button>
-              <button
-                type="button"
-                class="sidebar-more-option"
-                :class="{ active: morePanel === 'createGroup' }"
-                @click="morePanel = 'createGroup'"
-              >
-                <span>{{ t('createGroup') }}</span>
-                <small>+</small>
-              </button>
-            </div>
-
-            <div class="sidebar-more-card">
-              <template v-if="morePanel === 'friends'">
-                <div class="sidebar-section-head">
-                  <h3>{{ t('friends') }}</h3>
-                  <span class="muted-pill">{{ friends.length }}</span>
-                </div>
-                <div class="chip-row">
-                  <span v-if="!friends.length" class="sidebar-empty">{{ t('noData') }}</span>
-                </div>
-                <div class="contact-list sidebar-scroll-list">
-                  <div v-for="friend in friends" :key="friend.friend_id" class="contact-row">
-                    <button type="button" class="contact-row-main" @click="selectFriendConversation(friend.friend_id)">
-                      <span class="contact-title">
-                        <strong>{{ friend.display_name }}</strong>
-                        <span class="contact-meta">{{ friend.online ? t('online') : t('offline') }}</span>
-                      </span>
-                    </button>
-                    <button type="button" class="contact-danger" @click="removeFriend(friend.friend_id)">
-                      {{ t('delete') }}
-                    </button>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="morePanel === 'friendRequests'">
-                <div class="sidebar-section-head">
-                  <h3>{{ t('friendRequests') }}</h3>
-                  <span class="muted-pill">{{ friendRequests.length }}</span>
-                </div>
-                <div class="contact-list sidebar-scroll-list">
-                  <div v-for="request in friendRequests" :key="request.request_id" class="contact-row">
-                    <div class="contact-row-main contact-row-static">
-                      <span class="contact-title">
-                        <strong>{{ request.from_display_name }}</strong>
-                        <span class="contact-meta">{{ request.from_user_id }}</span>
-                      </span>
-                      <span class="contact-meta">{{ formatConversationTime(request.created_at) }}</span>
-                    </div>
-                    <div class="contact-actions">
-                      <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, true)">
-                        {{ t('accept') }}
-                      </button>
-                      <button type="button" class="ghost-button contact-action" @click="respondToRequest(request.request_id, false)">
-                        {{ t('reject') }}
-                      </button>
-                    </div>
-                  </div>
-                  <span v-if="!friendRequests.length" class="sidebar-empty">{{ t('noData') }}</span>
-                </div>
-              </template>
-
-              <template v-else-if="morePanel === 'addFriend'">
-                <div class="sidebar-section-head">
-                  <h3>{{ t('addFriend') }}</h3>
-                </div>
-                <form class="inline-form" @submit.prevent="submitFriend">
-                  <input v-model="friendName" :placeholder="t('addFriendPlaceholder')" :disabled="isActionPending" />
-                  <button class="primary-button" type="submit" :disabled="isActionPending || !friendName.trim()">
-                    {{ t('addFriendSubmit') }}
-                  </button>
-                </form>
-              </template>
-
-              <template v-else-if="morePanel === 'groups'">
-                <div class="sidebar-section-head">
-                  <h3>{{ t('groups') }}</h3>
-                  <span class="muted-pill">{{ groups.length }}</span>
-                </div>
-                <div class="contact-list sidebar-scroll-list">
-                  <div v-for="group in groups" :key="group.group_id" class="contact-row">
-                    <button type="button" class="contact-row-main" @click="selectConversation(group.conversation_id)">
-                      <span class="contact-title">
-                        <strong>{{ group.name }}</strong>
-                        <span class="contact-meta">{{ group.member_ids?.length ?? 0 }} members</span>
-                      </span>
-                      <span class="contact-meta">{{ group.group_id }}</span>
-                    </button>
-                    <button type="button" class="contact-danger" @click="leaveExistingGroup(group.group_id)">
-                      {{ t('leave') }}
-                    </button>
-                  </div>
-                  <span v-if="!groups.length" class="sidebar-empty">{{ t('noData') }}</span>
-                </div>
-              </template>
-
-              <template v-else-if="morePanel === 'createGroup'">
-                <div class="sidebar-section-head">
-                  <h3>{{ t('createGroup') }}</h3>
-                </div>
-                <form class="stack-form" @submit.prevent="submitGroup">
-                  <input v-model="groupName" :placeholder="t('groupNamePlaceholder')" :disabled="isActionPending" />
-                  <div class="member-picker">
-                    <label v-for="user in availableUsers" :key="user.user_id" class="member-option">
-                      <input
-                        :checked="selectedGroupMemberIds.includes(user.user_id)"
-                        type="checkbox"
-                        :disabled="isActionPending"
-                        @change="toggleGroupMember(user.user_id)"
-                      />
-                      <span>{{ user.display_name }}</span>
-                    </label>
-                  </div>
-                  <button class="primary-button" type="submit" :disabled="isActionPending || !groupName.trim() || !selectedGroupMemberIds.length">
-                    {{ t('createGroupSubmit') }}
-                  </button>
-                </form>
-              </template>
-            </div>
-          </div>
-        </div>
-
-        <div class="sidebar-section sidebar-section-scroll">
-          <div class="sidebar-section-head">
-            <h3>{{ t('conversations') }}</h3>
-            <span class="connection-pill" :data-state="connectionState">{{ connectionLabel }}</span>
+        <section class="chat-library-group">
+          <div class="chat-section-head">
+            <h3>Recent chats</h3>
+            <span class="muted-pill">{{ directConversations.length }}</span>
           </div>
 
-          <div class="conversation-list sidebar-scroll-list">
-            <button
-              v-for="conversation in allConversations"
-              :key="conversation.conversation_id"
-              type="button"
-              class="conversation-item"
-              :class="{ active: conversation.conversation_id === selectedConversationId }"
-              @click="selectConversation(conversation.conversation_id)"
-            >
-              <div class="conversation-avatar">
-                {{ initials(conversation.display_name) }}
+          <button
+            v-for="conversation in directConversations"
+            :key="conversation.conversation_id"
+            type="button"
+            class="chat-thread-item"
+            :class="{ active: conversation.conversation_id === selectedConversationId }"
+            @click="selectConversation(conversation.conversation_id)"
+          >
+            <div class="chat-thread-avatar">{{ initials(conversation.display_name) }}</div>
+            <div class="chat-thread-copy">
+              <div class="chat-thread-top">
+                <strong>{{ conversation.display_name }}</strong>
+                <span>{{ formatConversationTime(conversation.last_message_at) }}</span>
               </div>
-              <div class="conversation-copy">
-                <div class="conversation-title-row">
-                  <strong>{{ conversation.display_name }}</strong>
-                  <span>{{ formatConversationTime(conversation.last_message_at) }}</span>
-                </div>
-                <p>{{ conversation.last_message || t('emptyConversation') }}</p>
-              </div>
-              <span v-if="conversation.unread_count" class="unread-badge">{{ conversation.unread_count }}</span>
-            </button>
+              <p>{{ conversation.last_message || t('emptyConversation') }}</p>
+            </div>
+            <span v-if="conversation.unread_count" class="chat-thread-badge">{{ conversation.unread_count }}</span>
+          </button>
 
-            <p v-if="!conversations.length" class="sidebar-empty">{{ t('noData') }}</p>
+          <p v-if="!directConversations.length" class="chat-empty-list">{{ t('noData') }}</p>
+        </section>
+
+        <section class="chat-library-group">
+          <div class="chat-section-head">
+            <h3>Group chats</h3>
+            <span class="muted-pill">{{ groupConversations.length }}</span>
           </div>
-        </div>
+
+          <button
+            v-for="conversation in groupConversations"
+            :key="conversation.conversation_id"
+            type="button"
+            class="chat-thread-item"
+            :class="{ active: conversation.conversation_id === selectedConversationId }"
+            @click="selectConversation(conversation.conversation_id)"
+          >
+            <div class="chat-thread-avatar chat-thread-avatar-group">{{ initials(conversation.display_name) }}</div>
+            <div class="chat-thread-copy">
+              <div class="chat-thread-top">
+                <strong>{{ conversation.display_name }}</strong>
+                <span>{{ formatConversationTime(conversation.last_message_at) }}</span>
+              </div>
+              <p>{{ conversation.member_ids?.length ?? 0 }} members</p>
+            </div>
+            <span v-if="conversation.unread_count" class="chat-thread-badge">{{ conversation.unread_count }}</span>
+          </button>
+
+          <p v-if="!groupConversations.length" class="chat-empty-list">{{ t('noData') }}</p>
+        </section>
       </aside>
 
-      <main class="chat-main">
+      <main class="chat-room">
         <template v-if="selectedConversation">
-          <header class="chat-header">
-            <div class="chat-header-main">
+          <header class="chat-room-header">
+            <div class="chat-room-title">
               <button
+                v-if="isMobileViewport"
                 type="button"
                 class="chat-back-button"
                 :aria-label="t('backToRooms')"
@@ -230,30 +99,30 @@
               >
                 ‹
               </button>
-              <div>
-                <p class="eyebrow">
-                  {{ selectedConversation.is_group ? t('groups') : t('chatTitle') }}
-                </p>
-                <h2>{{ selectedConversation.display_name }}</h2>
-                <p class="chat-header-meta">{{ selectedConversation.last_message || t('emptyConversation') }}</p>
-              </div>
+              <p class="eyebrow">Inbox</p>
+              <h2>{{ selectedConversation.display_name }}</h2>
+              <p class="chat-room-subtitle">{{ selectedConversation.last_message || t('emptyConversation') }}</p>
             </div>
-            <div class="chat-header-actions">
-              <span class="muted-pill">{{ selectedConversation.is_group ? 'Group' : 'Direct' }}</span>
+            <div class="chat-room-actions">
               <button
                 v-if="canStartVoiceCall(selectedConversation)"
-                class="ghost-button"
+                class="chat-icon-button"
                 type="button"
+                :aria-label="t('voiceCall')"
                 @click="startVoiceCall"
               >
-                {{ t('voiceCall') }}
+                ☎
               </button>
-              <button v-if="selectedConversation.is_group" class="ghost-button" type="button" @click="leaveCurrentGroup">
-                {{ t('leave') }}
+              <button
+                v-if="selectedConversation.is_group"
+                class="chat-icon-button"
+                type="button"
+                :aria-label="t('leave')"
+                @click="leaveCurrentGroup"
+              >
+                ⌁
               </button>
-              <button class="ghost-button" type="button" @click="refreshCurrentConversation">
-                {{ t('refresh') }}
-              </button>
+              <button class="chat-icon-button" type="button" :aria-label="t('refresh')" @click="refreshCurrentConversation">↻</button>
             </div>
           </header>
 
@@ -283,42 +152,45 @@
             </div>
           </div>
 
-          <section ref="messagesViewport" class="message-list">
+          <section ref="messagesViewport" class="chat-timeline">
             <article
               v-for="message in messages"
               :key="message.time + message.sender_id + (message.text || '')"
-              class="message-bubble"
+              class="chat-message"
               :class="{ self: message.sender_id === currentUser.id }"
             >
-              <div class="message-meta">
-                <strong>{{ displayNameFor(message.sender_id) }}</strong>
-                <span>{{ formatMessageTime(message.time) }}</span>
+              <div class="chat-message-avatar">{{ initials(displayNameFor(message.sender_id)) }}</div>
+              <div class="chat-message-card">
+                <div class="chat-message-meta">
+                  <strong>{{ displayNameFor(message.sender_id) }}</strong>
+                  <span>{{ formatMessageTime(message.time) }}</span>
+                </div>
+                <template v-if="messageAttachmentUrl(message)">
+                  <a
+                    v-if="isImageAttachment(message)"
+                    class="message-image-link"
+                    :href="messageAttachmentUrl(message)"
+                    target="_blank"
+                    rel="noreferrer"
+                    @click.prevent="openImagePreview(message)"
+                  >
+                    <img class="message-image" :src="messageAttachmentUrl(message)" :alt="messageAttachmentLabel(message)" />
+                  </a>
+                  <a
+                    v-else
+                    class="message-file-link"
+                    :href="messageAttachmentUrl(message)"
+                    target="_blank"
+                    rel="noreferrer"
+                    :download="messageAttachmentLabel(message)"
+                  >
+                    <span class="message-file-icon" aria-hidden="true">+</span>
+                    <span>{{ messageAttachmentLabel(message) }}</span>
+                  </a>
+                </template>
+                <p v-if="message.text">{{ message.text }}</p>
+                <p v-else-if="!messageAttachmentUrl(message)">...</p>
               </div>
-              <template v-if="messageAttachmentUrl(message)">
-                <a
-                  v-if="isImageAttachment(message)"
-                  class="message-image-link"
-                  :href="messageAttachmentUrl(message)"
-                  target="_blank"
-                  rel="noreferrer"
-                  @click.prevent="openImagePreview(message)"
-                >
-                  <img class="message-image" :src="messageAttachmentUrl(message)" :alt="messageAttachmentLabel(message)" />
-                </a>
-                <a
-                  v-else
-                  class="message-file-link"
-                  :href="messageAttachmentUrl(message)"
-                  target="_blank"
-                  rel="noreferrer"
-                  :download="messageAttachmentLabel(message)"
-                >
-                  <span class="message-file-icon" aria-hidden="true">+</span>
-                  <span>{{ messageAttachmentLabel(message) }}</span>
-                </a>
-              </template>
-              <p v-if="message.text">{{ message.text }}</p>
-              <p v-else-if="!messageAttachmentUrl(message)">...</p>
             </article>
 
             <div v-if="!messages.length" class="message-empty">
@@ -327,15 +199,15 @@
           </section>
 
           <form
-            class="composer"
-            :class="{ 'composer-dragging': isDraggingFile }"
+            class="chat-composer"
+            :class="{ dragging: isDraggingFile }"
             @submit.prevent="sendMessage"
             @dragenter.prevent="handleDragEnter"
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
-            >
-            <div class="composer-input-stack">
+          >
+            <div class="chat-composer-inner">
               <div v-if="fileAttachment" class="file-attachment-preview">
                 <img
                   v-if="fileAttachment.type.startsWith('image/')"
@@ -363,16 +235,17 @@
 
               <input
                 v-model="draft"
-                class="composer-input"
+                class="chat-composer-input"
                 :placeholder="t('messagePlaceholder')"
                 :disabled="isSending || isProcessingFile"
                 @keydown.enter.exact.prevent="sendMessage"
               />
             </div>
+
             <input ref="fileInput" class="composer-file-input" type="file" @change="handleFileChange" />
             <button
               type="button"
-              class="ghost-button composer-file-button"
+              class="chat-chip-button"
               :disabled="isSending || isProcessingFile"
               :aria-label="t('chooseFile')"
               :title="t('chooseFile')"
@@ -380,7 +253,7 @@
             >
               +
             </button>
-            <button class="primary-button" type="submit" :disabled="isSending || isProcessingFile || (!draft.trim() && !fileAttachment)">
+            <button class="chat-send-button" type="submit" :disabled="isSending || isProcessingFile || (!draft.trim() && !fileAttachment)">
               {{ isSending ? t('working') : t('send') }}
             </button>
           </form>
@@ -390,12 +263,46 @@
           <div class="empty-card">
             <p class="eyebrow">{{ t('brand') }}</p>
             <h2>{{ t('emptyConversation') }}</h2>
-            <p>
-              選擇左側任一對話，Vue 版會透過既有 WebSocket 與 `/messages` API 載入歷史與即時更新。
-            </p>
+            <p>選擇左側任一對話，Vue 版會透過既有 WebSocket 與 `/messages` API 載入歷史與即時更新。</p>
           </div>
         </div>
       </main>
+
+      <aside class="chat-profile">
+        <button type="button" class="chat-profile-close" aria-label="Close">×</button>
+        <div class="chat-profile-card">
+          <div class="chat-profile-avatar">{{ initials(selectedConversation?.display_name || currentUser.displayName) }}</div>
+          <h3>{{ selectedConversation?.display_name || currentUser.displayName }}</h3>
+          <p class="chat-profile-status">
+            <span class="chat-profile-dot"></span>
+            {{ selectedConversation?.is_group ? 'Group' : 'Online' }}
+          </p>
+          <div class="chat-profile-actions">
+            <button type="button" class="chat-profile-action">💬</button>
+            <button type="button" class="chat-profile-action" @click="selectedConversation && canStartVoiceCall(selectedConversation) && startVoiceCall()">☎</button>
+            <button type="button" class="chat-profile-action">◴</button>
+          </div>
+        </div>
+
+        <dl class="chat-profile-meta">
+          <div>
+            <dt>Role</dt>
+            <dd>{{ selectedConversation?.is_group ? 'Group chat' : 'Direct chat' }}</dd>
+          </div>
+          <div>
+            <dt>Peer</dt>
+            <dd>{{ selectedConversation?.recipient_id || selectedConversation?.conversation_id || '—' }}</dd>
+          </div>
+          <div>
+            <dt>Last message</dt>
+            <dd>{{ selectedConversation?.last_message_at ? formatConversationTime(selectedConversation.last_message_at) : '—' }}</dd>
+          </div>
+          <div>
+            <dt>Local time</dt>
+            <dd>{{ localTimeLabel }}</dd>
+          </div>
+        </dl>
+      </aside>
     </div>
 
     <div
@@ -448,6 +355,7 @@ import type {
   FriendRequestRecord,
   GroupRecord,
 } from '../types'
+import LanguageSwitcher from './LanguageSwitcher.vue'
 
 const VOICE_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 
@@ -548,6 +456,31 @@ const connectionLabel = computed(() => {
 })
 
 const allConversations = computed(() => conversations.value)
+const searchQuery = ref('')
+
+const filteredConversations = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return allConversations.value
+
+  return allConversations.value.filter((conversation) => {
+    return [
+      conversation.display_name,
+      conversation.last_message,
+      conversation.conversation_id,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query))
+  })
+})
+
+const directConversations = computed(() => filteredConversations.value.filter((conversation) => !conversation.is_group))
+const groupConversations = computed(() => filteredConversations.value.filter((conversation) => conversation.is_group))
+const localTimeLabel = computed(() =>
+  new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date()),
+)
 
 const selectedConversation = computed(
   () =>
