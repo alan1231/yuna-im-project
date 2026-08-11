@@ -11,6 +11,7 @@ func TestMessageIndexes(t *testing.T) {
 		"conversation_time",
 		"sender_time_desc",
 		"recipient_time_desc",
+		"participant_time_desc",
 		"conversation_recipient_read",
 	})
 }
@@ -45,6 +46,9 @@ func TestFriendRequestIndexes(t *testing.T) {
 
 func assertIndexNames(t *testing.T, indexes []mongo.IndexModel, want []string) {
 	t.Helper()
+	if len(indexes) != len(want) {
+		t.Fatalf("index count = %d, want %d", len(indexes), len(want))
+	}
 
 	got := map[string]bool{}
 	for _, index := range indexes {
