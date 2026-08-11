@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestConversationIDForSortsParticipants(t *testing.T) {
@@ -111,5 +113,15 @@ func TestDeliverVoiceSignalTargetsRecipient(t *testing.T) {
 	case event := <-other.send:
 		t.Fatalf("other user unexpectedly received %#v", event)
 	default:
+	}
+}
+
+func TestChronologicalMessagesReversesNewestFirstResults(t *testing.T) {
+	messages := []bson.M{{"text": "newest"}, {"text": "middle"}, {"text": "oldest"}}
+
+	chronologicalMessages(messages)
+
+	if messages[0]["text"] != "oldest" || messages[1]["text"] != "middle" || messages[2]["text"] != "newest" {
+		t.Fatalf("messages = %#v, want oldest to newest", messages)
 	}
 }

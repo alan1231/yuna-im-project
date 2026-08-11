@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1131,7 +1132,7 @@ func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client
 	cursor, err := collection.Find(
 		r.Context(),
 		bson.M{"conversation_id": conversationID},
-		options.Find().SetSort(bson.D{{Key: "time", Value: 1}}).SetLimit(100),
+		options.Find().SetSort(bson.D{{Key: "time", Value: -1}}).SetLimit(100),
 	)
 	if err != nil {
 		log.Printf("歷史訊息讀取失敗: %v", err)
@@ -1146,11 +1147,16 @@ func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client
 		http.Error(w, "decode messages failed", http.StatusInternalServerError)
 		return
 	}
+	chronologicalMessages(messages)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(messages); err != nil {
 		log.Printf("歷史訊息回應 JSON 失敗: %v", err)
 	}
+}
+
+func chronologicalMessages(messages []bson.M) {
+	slices.Reverse(messages)
 }
 
 func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
