@@ -7,7 +7,7 @@ import {
   getMessageKey,
 } from '../../models/types';
 
-const WS_URL = 'wss://yuna-im-project.onrender.com/ws';
+const WS_URL = 'wss://yuna-im-api.vercel.app/ws';
 
 export function useMessageThreadViewModel(
   user: CurrentUser,

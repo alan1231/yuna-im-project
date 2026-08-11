@@ -116,7 +116,7 @@ npm run ios
 React Native app 預設連到雲端 Go API：
 
 ```text
-https://yuna-im-project.onrender.com
+https://yuna-im-api.vercel.app
 ```
 
 若要改用本機 Go 後端，請把 API host 指到電腦在同一個 Wi-Fi 內的 IP：

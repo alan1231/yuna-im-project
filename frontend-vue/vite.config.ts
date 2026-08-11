@@ -6,13 +6,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://yuna-im-project.onrender.com',
+        target: 'https://yuna-im-api.vercel.app',
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/ws': {
-        target: 'wss://yuna-im-project.onrender.com',
+        target: 'wss://yuna-im-api.vercel.app',
         ws: true,
         changeOrigin: true,
       },

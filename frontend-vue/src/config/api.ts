@@ -5,7 +5,7 @@ export type ApiMode = 'local' | 'online'
 const STORAGE_KEY = 'frontend-vue-api-mode'
 const API_BASES: Record<ApiMode, string> = {
   local: 'http://localhost:8080',
-  online: 'https://yuna-im-project.onrender.com',
+  online: 'https://yuna-im-api.vercel.app',
 }
 
 const loadApiMode = (): ApiMode => {

@@ -6,7 +6,7 @@ import {
   createLocalUserId,
 } from '../models/types';
 
-const API_URL = 'https://yuna-im-project.onrender.com';
+const API_URL = 'https://yuna-im-api.vercel.app';
 
 async function requestJson<T>(
   input: string,
