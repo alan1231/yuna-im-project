@@ -265,33 +265,25 @@ func isVoiceSignalType(eventType string) bool {
 	}
 }
 
-func encodeVoiceSignal(signal voiceSignalEnvelope) ([]byte, error) {
-	return json.Marshal(signal)
-}
-
-func decodeVoiceSignal(payload []byte) (voiceSignalEnvelope, error) {
+func deliverVoiceSignalPayload(hub *changeStreamHub, payload []byte) error {
 	var signal voiceSignalEnvelope
-	err := json.Unmarshal(payload, &signal)
-	return signal, err
-}
-
-func deliverVoiceSignal(hub *changeStreamHub, signal voiceSignalEnvelope) {
+	if err := json.Unmarshal(payload, &signal); err != nil {
+		return err
+	}
 	hub.sendToUser(signal.RecipientID, signal.Event)
+	return nil
 }
 
-func runVoiceSignals(ctx context.Context, hub *changeStreamHub, subscription *redis.PubSub) {
+func runVoiceSignals(hub *changeStreamHub, subscription *redis.PubSub) {
 	for message := range subscription.Channel() {
-		signal, err := decodeVoiceSignal([]byte(message.Payload))
-		if err != nil {
+		if err := deliverVoiceSignalPayload(hub, []byte(message.Payload)); err != nil {
 			log.Printf("Redis 語音 signaling 解析失敗: %v", err)
-			continue
 		}
-		deliverVoiceSignal(hub, signal)
 	}
 }
 
 func publishVoiceSignal(ctx context.Context, redisClient *redis.Client, signal voiceSignalEnvelope) error {
-	payload, err := encodeVoiceSignal(signal)
+	payload, err := json.Marshal(signal)
 	if err != nil {
 		return err
 	}
@@ -1570,7 +1562,7 @@ func Run(cfg Config) error {
 		return err
 	}
 	defer voiceSubscription.Close()
-	go runVoiceSignals(hubCtx, hub, voiceSubscription)
+	go runVoiceSignals(hub, voiceSubscription)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

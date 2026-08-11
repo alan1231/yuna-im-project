@@ -169,8 +169,10 @@ export const useChatViewModel = (currentUser) => {
   const availableUsersRef = useRef(availableUsers)
   const socketRef = useRef(null)
   const connectRef = useRef(null)
+  const reloadChatDataRef = useRef(null)
   const reconnectTimerRef = useRef(null)
   const shouldReconnectRef = useRef(false)
+  const hasConnectedRef = useRef(false)
   const peerConnectionRef = useRef(null)
   const localStreamRef = useRef(null)
   const remoteAudioRef = useRef(null)
@@ -811,6 +813,12 @@ export const useChatViewModel = (currentUser) => {
       setIsConnected(true)
       setConnectionError('')
       sendActiveConversation()
+      if (hasConnectedRef.current) {
+        reloadChatDataRef.current?.().catch((error) => {
+          console.error('Chat resync after reconnect failed:', error)
+        })
+      }
+      hasConnectedRef.current = true
       console.log('Connected to Go backend')
     }
 
@@ -834,7 +842,6 @@ export const useChatViewModel = (currentUser) => {
       if (socketRef.current !== socket) return
       socketRef.current = null
       setIsConnected(false)
-      cleanupVoiceCall()
       if (shouldReconnectRef.current) {
         reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
       }
@@ -1058,6 +1065,10 @@ export const useChatViewModel = (currentUser) => {
     loadMessagesForRoom,
     loadUsers,
   ])
+
+  useEffect(() => {
+    reloadChatDataRef.current = reloadChatData
+  }, [reloadChatData])
 
   const wakeBackend = useCallback(async () => {
     if (isWakingBackend) return

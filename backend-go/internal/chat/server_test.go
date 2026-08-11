@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestConversationIDForSortsParticipants(t *testing.T) {
@@ -89,36 +87,6 @@ func TestHandleHealthChecksDependencies(t *testing.T) {
 	}
 }
 
-func TestVoiceSignalEnvelopeRoundTrip(t *testing.T) {
-	want := voiceSignalEnvelope{
-		RecipientID: "user_b",
-		Event: websocketEvent{
-			Type: "voice_offer",
-			Payload: bson.M{
-				"sender_id":       "user_a",
-				"recipient_id":    "user_b",
-				"conversation_id": "dm:user_a:user_b",
-			},
-		},
-	}
-
-	payload, err := encodeVoiceSignal(want)
-	if err != nil {
-		t.Fatalf("encodeVoiceSignal() error = %v", err)
-	}
-	got, err := decodeVoiceSignal(payload)
-	if err != nil {
-		t.Fatalf("decodeVoiceSignal() error = %v", err)
-	}
-
-	if got.RecipientID != want.RecipientID || got.Event.Type != want.Event.Type {
-		t.Fatalf("decodeVoiceSignal() = %#v, want %#v", got, want)
-	}
-	if got.Event.Payload["conversation_id"] != want.Event.Payload["conversation_id"] {
-		t.Fatalf("conversation_id = %#v, want %#v", got.Event.Payload["conversation_id"], want.Event.Payload["conversation_id"])
-	}
-}
-
 func TestDeliverVoiceSignalTargetsRecipient(t *testing.T) {
 	hub := newChangeStreamHub(nil)
 	recipient := newWSClient("user_b", "dm:user_a:user_b")
@@ -126,10 +94,10 @@ func TestDeliverVoiceSignalTargetsRecipient(t *testing.T) {
 	hub.register(recipient)
 	hub.register(other)
 
-	deliverVoiceSignal(hub, voiceSignalEnvelope{
-		RecipientID: "user_b",
-		Event:       websocketEvent{Type: "voice_offer", Payload: bson.M{"sender_id": "user_a"}},
-	})
+	payload := []byte(`{"recipient_id":"user_b","event":{"type":"voice_offer","payload":{"sender_id":"user_a"}}}`)
+	if err := deliverVoiceSignalPayload(hub, payload); err != nil {
+		t.Fatalf("deliverVoiceSignalPayload() error = %v", err)
+	}
 
 	select {
 	case event := <-recipient.send:
