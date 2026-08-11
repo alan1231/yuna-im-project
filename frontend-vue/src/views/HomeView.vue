@@ -67,20 +67,18 @@ onMounted(async () => {
   }
 })
 
-const requestedPassword = (password = '') => password || window.prompt('密碼（至少 8 個字元）') || ''
 const passwordIsValid = (password: string) => {
   const bytes = new TextEncoder().encode(password).length
   return bytes >= 8 && bytes <= 72
 }
 
-const createUser = async (displayName: string, password = '') => {
+const createUser = async (displayName: string, password: string) => {
   const name = displayName.trim()
-  const credential = requestedPassword(password)
-  if (!name || !passwordIsValid(credential) || isSubmitting.value) return
+  if (!name || !passwordIsValid(password) || isSubmitting.value) return
 
   try {
     await runWithBackendWake(async () => {
-      const { user, token } = await registerAccount(name, credential)
+      const { user, token } = await registerAccount(name, password)
       persistUser({
         id: user.user_id,
         displayName: user.display_name,
@@ -95,14 +93,13 @@ const createUser = async (displayName: string, password = '') => {
   }
 }
 
-const loginUser = async (displayName: string, password = '') => {
+const loginUser = async (displayName: string, password: string) => {
   const name = displayName.trim()
-  const credential = requestedPassword(password)
-  if (!name || !passwordIsValid(credential) || isSubmitting.value) return
+  if (!name || !passwordIsValid(password) || isSubmitting.value) return
 
   try {
     await runWithBackendWake(async () => {
-      const { user, token } = await loginAccount(name, credential)
+      const { user, token } = await loginAccount(name, password)
       persistUser({
         id: user.user_id,
         displayName: user.display_name,
