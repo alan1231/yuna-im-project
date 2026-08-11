@@ -11,6 +11,7 @@ func TestLoadConfigUsesDefaults(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "")
 	t.Setenv("DATABASE_NAME", "")
 	t.Setenv("SERVER_ADDR", "")
+	t.Setenv("PORT", "")
 	t.Setenv("ALLOWED_ORIGINS", "")
 
 	cfg := LoadConfig()
@@ -53,6 +54,7 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "admin-secret")
 	t.Setenv("DATABASE_NAME", "chat_test")
 	t.Setenv("SERVER_ADDR", ":9090")
+	t.Setenv("PORT", "3000")
 	t.Setenv("ALLOWED_ORIGINS", "http://localhost:5173")
 
 	cfg := LoadConfig()
@@ -83,5 +85,16 @@ func TestLoadConfigUsesEnvironment(t *testing.T) {
 	}
 	if cfg.AllowedOrigins != "http://localhost:5173" {
 		t.Fatalf("AllowedOrigins = %q", cfg.AllowedOrigins)
+	}
+}
+
+func TestLoadConfigUsesVercelPort(t *testing.T) {
+	t.Setenv("SERVER_ADDR", "")
+	t.Setenv("PORT", "3000")
+
+	cfg := LoadConfig()
+
+	if cfg.ServerAddr != ":3000" {
+		t.Fatalf("ServerAddr = %q, want %q", cfg.ServerAddr, ":3000")
 	}
 }

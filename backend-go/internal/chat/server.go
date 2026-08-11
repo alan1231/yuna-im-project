@@ -23,11 +23,12 @@ import (
 )
 
 const (
-	collectionName     = "messages"
-	usersName          = "users"
-	friendsName        = "friends"
-	friendRequestsName = "friend_requests"
-	groupsName         = "groups"
+	collectionName      = "messages"
+	usersName           = "users"
+	friendsName         = "friends"
+	friendRequestsName  = "friend_requests"
+	groupsName          = "groups"
+	voiceSignalsChannel = "yuna-im:voice-signals"
 )
 
 var databaseName = defaultDatabaseName
@@ -81,6 +82,11 @@ type changeStreamHub struct {
 	mu      sync.Mutex
 	clients map[*wsClient]struct{}
 	mongo   *mongo.Client
+}
+
+type voiceSignalEnvelope struct {
+	RecipientID string         `json:"recipient_id"`
+	Event       websocketEvent `json:"event"`
 }
 
 func newChangeStreamHub(client *mongo.Client) *changeStreamHub {
@@ -259,7 +265,40 @@ func isVoiceSignalType(eventType string) bool {
 	}
 }
 
-func forwardVoiceSignal(ctx context.Context, client *mongo.Client, hub *changeStreamHub, senderID string, msg bson.M) {
+func encodeVoiceSignal(signal voiceSignalEnvelope) ([]byte, error) {
+	return json.Marshal(signal)
+}
+
+func decodeVoiceSignal(payload []byte) (voiceSignalEnvelope, error) {
+	var signal voiceSignalEnvelope
+	err := json.Unmarshal(payload, &signal)
+	return signal, err
+}
+
+func deliverVoiceSignal(hub *changeStreamHub, signal voiceSignalEnvelope) {
+	hub.sendToUser(signal.RecipientID, signal.Event)
+}
+
+func runVoiceSignals(ctx context.Context, hub *changeStreamHub, subscription *redis.PubSub) {
+	for message := range subscription.Channel() {
+		signal, err := decodeVoiceSignal([]byte(message.Payload))
+		if err != nil {
+			log.Printf("Redis 語音 signaling 解析失敗: %v", err)
+			continue
+		}
+		deliverVoiceSignal(hub, signal)
+	}
+}
+
+func publishVoiceSignal(ctx context.Context, redisClient *redis.Client, signal voiceSignalEnvelope) error {
+	payload, err := encodeVoiceSignal(signal)
+	if err != nil {
+		return err
+	}
+	return redisClient.Publish(ctx, voiceSignalsChannel, payload).Err()
+}
+
+func forwardVoiceSignal(ctx context.Context, client *mongo.Client, redisClient *redis.Client, senderID string, msg bson.M) {
 	eventType, _ := msg["type"].(string)
 	recipientID, _ := msg["recipient_id"].(string)
 	conversationID, _ := msg["conversation_id"].(string)
@@ -287,10 +326,15 @@ func forwardVoiceSignal(ctx context.Context, client *mongo.Client, hub *changeSt
 		}
 	}
 
-	hub.sendToUser(recipientID, websocketEvent{
-		Type:    eventType,
-		Payload: payload,
-	})
+	if err := publishVoiceSignal(ctx, redisClient, voiceSignalEnvelope{
+		RecipientID: recipientID,
+		Event: websocketEvent{
+			Type:    eventType,
+			Payload: payload,
+		},
+	}); err != nil {
+		log.Printf("Redis 語音 signaling 發送失敗: %v", err)
+	}
 }
 
 func conversationIDFor(userA string, userB string) string {
@@ -953,7 +997,7 @@ func handleLeaveGroup(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
-func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, presence *PresenceStore, hub *changeStreamHub) {
+func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, redisClient *redis.Client, presence *PresenceStore, hub *changeStreamHub) {
 	userID := r.URL.Query().Get("user_id")
 	conversationID := r.URL.Query().Get("conversation_id")
 	if userID == "" || conversationID == "" {
@@ -1004,7 +1048,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			}
 			continue
 		} else if isVoiceSignalType(eventType) {
-			forwardVoiceSignal(ctx, client, hub, userID, msg)
+			forwardVoiceSignal(ctx, client, redisClient, userID, msg)
 			continue
 		}
 
@@ -1521,10 +1565,16 @@ func Run(cfg Config) error {
 	defer stopHub()
 	hub := newChangeStreamHub(client)
 	go hub.run(hubCtx)
+	voiceSubscription := redisClient.Subscribe(hubCtx, voiceSignalsChannel)
+	if _, err := voiceSubscription.Receive(ctx); err != nil {
+		return err
+	}
+	defer voiceSubscription.Close()
+	go runVoiceSignals(hubCtx, hub, voiceSubscription)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(w, r, client, presence, hub)
+		handleConnections(w, r, client, redisClient, presence, hub)
 	})
 	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
 		handleUsers(w, r, client)

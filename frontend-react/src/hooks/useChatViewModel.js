@@ -168,6 +168,9 @@ export const useChatViewModel = (currentUser) => {
   const activeRoomIdRef = useRef(activeRoomId)
   const availableUsersRef = useRef(availableUsers)
   const socketRef = useRef(null)
+  const connectRef = useRef(null)
+  const reconnectTimerRef = useRef(null)
+  const shouldReconnectRef = useRef(false)
   const peerConnectionRef = useRef(null)
   const localStreamRef = useRef(null)
   const remoteAudioRef = useRef(null)
@@ -774,14 +777,30 @@ export const useChatViewModel = (currentUser) => {
   ])
 
   const disconnect = useCallback(() => {
-    if (!socketRef.current) return
+    shouldReconnectRef.current = false
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
 
-    socketRef.current.close()
+    const socket = socketRef.current
     socketRef.current = null
+    socket?.close()
     cleanupVoiceCall()
   }, [cleanupVoiceCall])
 
   const connect = useCallback(() => {
+    if (
+      socketRef.current?.readyState === WebSocket.OPEN ||
+      socketRef.current?.readyState === WebSocket.CONNECTING
+    ) return
+
+    shouldReconnectRef.current = true
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+
     const url = new URL(WS_URL)
     url.searchParams.set('user_id', currentUser.id)
     url.searchParams.set('conversation_id', getActiveRoom().conversationId)
@@ -812,9 +831,19 @@ export const useChatViewModel = (currentUser) => {
     }
 
     socket.onclose = () => {
+      if (socketRef.current !== socket) return
+      socketRef.current = null
       setIsConnected(false)
+      cleanupVoiceCall()
+      if (shouldReconnectRef.current) {
+        reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
+      }
     }
-  }, [addSystemMessage, currentUser.id, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
+  }, [addSystemMessage, cleanupVoiceCall, currentUser.id, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   const reconnect = useCallback(() => {
     disconnect()

@@ -35,10 +35,20 @@ func LoadConfig() Config {
 		RedisPassword:  strings.TrimSpace(os.Getenv("REDIS_PASSWORD")),
 		RedisTLS:       parseBool(os.Getenv("REDIS_TLS")),
 		DatabaseName:   envOrDefault("DATABASE_NAME", defaultDatabaseName),
-		ServerAddr:     envOrDefault("SERVER_ADDR", defaultServerAddr),
+		ServerAddr:     serverAddress(),
 		AllowedOrigins: envOrDefault("ALLOWED_ORIGINS", defaultAllowedOrigins),
 		AdminToken:     strings.TrimSpace(os.Getenv("ADMIN_TOKEN")),
 	}
+}
+
+func serverAddress() string {
+	if addr := strings.TrimSpace(os.Getenv("SERVER_ADDR")); addr != "" {
+		return addr
+	}
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		return ":" + port
+	}
+	return defaultServerAddr
 }
 
 func envOrDefault(key string, fallback string) string {
