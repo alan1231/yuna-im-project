@@ -33,7 +33,6 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     isWakingBackend,
     roomError,
     canSend,
-    isStockBotPending,
     voiceCall,
     setRemoteAudioElement,
     selectRoom,
@@ -53,7 +52,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     endVoiceCall,
     toggleVoiceMute,
   } = useChatViewModel(currentUser)
-  const typedActiveRoom = activeRoom as ChatRoom
+  const typedActiveRoom = activeRoom as ChatRoom | undefined
 
   const openRoom = (roomId: string) => {
     selectRoom(roomId)
@@ -112,53 +111,55 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         onLogout={onLogout}
       />
 
-      <section className="chat-panel">
-        <ChatHeader
-          isConnected={isConnected}
-          room={typedActiveRoom}
-          memberNames={activeRoomMemberNames}
-          canStartVoiceCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle'}
-          onBack={() => setMobileView('rooms')}
-          onLeaveGroup={() => leaveGroup(typedActiveRoom.id)}
-          onStartVoiceCall={startVoiceCall}
-        />
+      {typedActiveRoom ? (
+        <section className="chat-panel">
+          <ChatHeader
+            isConnected={isConnected}
+            room={typedActiveRoom}
+            memberNames={activeRoomMemberNames}
+            canStartVoiceCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle'}
+            onBack={() => setMobileView('rooms')}
+            onLeaveGroup={() => leaveGroup(typedActiveRoom.id)}
+            onStartVoiceCall={startVoiceCall}
+          />
 
-        {connectionError ? (
-          <div className="connection-error">
-            <span>{connectionError}</span>
-            <button type="button" onClick={wakeBackend} disabled={isWakingBackend}>
-              {isWakingBackend ? t('chat.wakingBackend') : t('chat.wakeBackend')}
-            </button>
-          </div>
-        ) : null}
+          {connectionError ? (
+            <div className="connection-error">
+              <span>{connectionError}</span>
+              <button type="button" onClick={wakeBackend} disabled={isWakingBackend}>
+                {isWakingBackend ? t('chat.wakingBackend') : t('chat.wakeBackend')}
+              </button>
+            </div>
+          ) : null}
 
-        <VoiceCallBar
-          voiceCall={voiceCall}
-          onAccept={acceptVoiceCall}
-          onReject={rejectVoiceCall}
-          onEnd={endVoiceCall}
-          onToggleMute={toggleVoiceMute}
-          remoteAudioRef={setRemoteAudioElement}
-        />
+          <VoiceCallBar
+            voiceCall={voiceCall}
+            onAccept={acceptVoiceCall}
+            onReject={rejectVoiceCall}
+            onEnd={endVoiceCall}
+            onToggleMute={toggleVoiceMute}
+            remoteAudioRef={setRemoteAudioElement}
+          />
 
-        <MessageList
-          messages={messages}
-          activeRoom={typedActiveRoom}
-        />
+          <MessageList
+            messages={messages}
+            activeRoom={typedActiveRoom}
+          />
 
-        <ChatComposer
-          value={userInput}
-          onChange={setUserInput}
-          fileAttachment={fileAttachment}
-          allowAttachments
-          canSend={canSend}
-          placeholder={t('chat.messagePlaceholder', { name: typedActiveRoom.name })}
-          submitLabel={t('chat.send')}
-          onAttachFile={attachFile}
-          onClearFile={clearFileAttachment}
-          onSend={sendMessage}
-        />
-      </section>
+          <ChatComposer
+            value={userInput}
+            onChange={setUserInput}
+            fileAttachment={fileAttachment}
+            allowAttachments
+            canSend={canSend}
+            placeholder={t('chat.messagePlaceholder', { name: typedActiveRoom.name })}
+            submitLabel={t('chat.send')}
+            onAttachFile={attachFile}
+            onClearFile={clearFileAttachment}
+            onSend={sendMessage}
+          />
+        </section>
+      ) : null}
     </main>
   )
 }

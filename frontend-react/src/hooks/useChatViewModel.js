@@ -1231,7 +1231,6 @@ export const useChatViewModel = (currentUser) => {
     isWakingBackend,
     roomError,
     canSend,
-    isStockBotPending,
     voiceCall,
     setRemoteAudioElement,
     selectRoom,
