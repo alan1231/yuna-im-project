@@ -1223,7 +1223,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 	}
 }
 
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+func handleHealth(w http.ResponseWriter, r *http.Request, checkDependencies func(context.Context) error) {
 	applyCORS(w)
 
 	if r.Method == http.MethodOptions {
@@ -1233,6 +1233,14 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := checkDependencies(ctx); err != nil {
+		log.Printf("health dependency check failed: %v", err)
+		http.Error(w, "dependencies unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -1499,6 +1507,15 @@ func Run(cfg Config) error {
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return err
 	}
+	healthCheck := func(ctx context.Context) error {
+		if err := client.Ping(ctx, nil); err != nil {
+			return fmt.Errorf("mongo ping: %w", err)
+		}
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			return fmt.Errorf("redis ping: %w", err)
+		}
+		return nil
+	}
 	presence := NewPresenceStore(redisClient, client)
 	hubCtx, stopHub := context.WithCancel(context.Background())
 	defer stopHub()
@@ -1534,7 +1551,7 @@ func Run(cfg Config) error {
 		handleConversations(w, r, client)
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		handleHealth(w, r)
+		handleHealth(w, r, healthCheck)
 	})
 	registerAdminRoutes(mux, client, redisClient, cfg.AdminToken)
 

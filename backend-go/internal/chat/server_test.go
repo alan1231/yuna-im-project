@@ -2,6 +2,9 @@ package chat
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -57,5 +60,29 @@ func TestIsOriginAllowed(t *testing.T) {
 	}
 	if isOriginAllowed("https://evil.example") {
 		t.Fatal("did not expect unconfigured origin to be allowed")
+	}
+}
+
+func TestHandleHealthChecksDependencies(t *testing.T) {
+	tests := []struct {
+		name       string
+		check      func(context.Context) error
+		wantStatus int
+	}{
+		{name: "available", check: func(context.Context) error { return nil }, wantStatus: http.StatusOK},
+		{name: "unavailable", check: func(context.Context) error { return errors.New("offline") }, wantStatus: http.StatusServiceUnavailable},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/health", nil)
+
+			handleHealth(response, request, test.check)
+
+			if response.Code != test.wantStatus {
+				t.Fatalf("health status = %d, want %d", response.Code, test.wantStatus)
+			}
+		})
 	}
 }
