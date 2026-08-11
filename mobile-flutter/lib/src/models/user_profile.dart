@@ -1,17 +1,27 @@
 class UserProfile {
-  const UserProfile({required this.id, required this.displayName});
+  const UserProfile({
+    required this.id,
+    required this.displayName,
+    required this.token,
+  });
 
   final String id;
   final String displayName;
+  final String token;
 
-  Map<String, dynamic> toJson() => {'id': id, 'display_name': displayName};
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'display_name': displayName,
+    'token': token,
+  };
 
   static UserProfile? fromJson(Map<String, dynamic>? json) {
     if (json == null) return null;
     final id = json['id']?.toString() ?? '';
     final displayName = json['display_name']?.toString() ?? '';
-    if (id.isEmpty || displayName.isEmpty) return null;
-    return UserProfile(id: id, displayName: displayName);
+    final token = json['token']?.toString() ?? '';
+    if (id.isEmpty || displayName.isEmpty || token.isEmpty) return null;
+    return UserProfile(id: id, displayName: displayName, token: token);
   }
 }
 

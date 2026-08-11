@@ -1,18 +1,20 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AccountSetup from './components/account/AccountSetup'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow'
 import LanguageSwitcher from './components/LanguageSwitcher.jsx'
-import { chatQueryKeys, createUser as createUserApi, fetchUsers, wakeBackend as wakeBackendApi } from './api/chatApi'
+import {
+  fetchCurrentUser,
+  loginAccount,
+  logoutAccount,
+  registerAccount,
+  wakeBackend as wakeBackendApi,
+} from './api/chatApi'
 import { useAuthStore } from './stores/authStore'
 import type { CurrentUser } from './types/chat'
-
-const createLocalUserId = () => {
-  return window.crypto?.randomUUID?.() || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
 
 export default function App() {
   return (
@@ -36,17 +38,28 @@ function ChatRoute() {
   const [isCreatingUser, setIsCreatingUser] = useState(false)
   const [showBackendWakeHint, setShowBackendWakeHint] = useState(false)
   const [accountError, setAccountError] = useState('')
+  const [isRestoringSession, setIsRestoringSession] = useState(Boolean(currentUser))
 
   const persistUser = (user: CurrentUser) => {
     setCurrentUser(user)
   }
 
-  const createUserMutation = useMutation({
-    mutationFn: createUserApi,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: chatQueryKeys.users('') })
-    },
-  })
+  useEffect(() => {
+    if (!currentUser) {
+      setIsRestoringSession(false)
+      return
+    }
+    fetchCurrentUser()
+      .then((user) => persistUser({
+        id: user.user_id,
+        displayName: user.display_name,
+        token: currentUser.token,
+      }))
+      .catch(() => clearCurrentUser())
+      .finally(() => setIsRestoringSession(false))
+    // The persisted token only needs verification once when the app starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const runWithBackendWake = async (action: () => Promise<void>) => {
     setIsCreatingUser(true)
@@ -66,19 +79,17 @@ function ChatRoute() {
     }
   }
 
-  const createUser = async (displayName: string) => {
+  const createUser = async (displayName: string, password: string) => {
     const name = displayName.trim()
     if (!name || isCreatingUser) return
 
     try {
       await runWithBackendWake(async () => {
-        const user = await createUserMutation.mutateAsync({
-          userId: createLocalUserId(),
-          displayName: name,
-        })
+        const { user, token } = await registerAccount(name, password)
         persistUser({
           id: user.user_id,
           displayName: user.display_name,
+          token,
         })
       })
     } catch (error) {
@@ -89,26 +100,17 @@ function ChatRoute() {
     }
   }
 
-  const loginUser = async (displayName: string) => {
+  const loginUser = async (displayName: string, password: string) => {
     const name = displayName.trim()
     if (!name || isCreatingUser) return
 
     try {
       await runWithBackendWake(async () => {
-        await queryClient.invalidateQueries({ queryKey: chatQueryKeys.users('') })
-        const users = await queryClient.fetchQuery({
-          queryKey: chatQueryKeys.users(''),
-          queryFn: () => fetchUsers(),
-        })
-        const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
-        if (!user) {
-          setAccountError(t('account.errors.loginNotFound'))
-          return
-        }
-
+        const { user, token } = await loginAccount(name, password)
         persistUser({
           id: user.user_id,
           displayName: user.display_name,
+          token,
         })
       })
     } catch (error) {
@@ -117,11 +119,18 @@ function ChatRoute() {
     }
   }
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await logoutAccount()
+    } catch (error) {
+      console.warn('Server logout failed:', error)
+    }
     clearCurrentUser()
+    queryClient.clear()
     setAccountError('')
   }
 
+  if (isRestoringSession) return null
   if (currentUser) return <ChatWindow currentUser={currentUser} onLogout={logout} />
 
   return (

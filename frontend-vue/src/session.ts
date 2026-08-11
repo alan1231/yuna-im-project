@@ -10,7 +10,7 @@ const readCurrentUser = (): CurrentUser | null => {
 
   try {
     const parsed = JSON.parse(raw) as CurrentUser
-    if (parsed && typeof parsed.id === 'string' && typeof parsed.displayName === 'string') {
+    if (parsed && typeof parsed.id === 'string' && typeof parsed.displayName === 'string' && typeof parsed.token === 'string') {
       return parsed
     }
   } catch {

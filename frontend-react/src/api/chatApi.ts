@@ -1,4 +1,5 @@
 import { API_URL } from '../config/api'
+import { useAuthStore } from '../stores/authStore'
 import type { ApiUser } from '../types/chat'
 
 export const chatQueryKeys = {
@@ -14,8 +15,19 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 }
 
+const withAuth = (init: RequestInit = {}): RequestInit => {
+  const token = useAuthStore.getState().currentUser?.token
+  return {
+    ...init,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init.headers,
+    },
+  }
+}
+
 const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
-  const response = await fetch(input, init)
+  const response = await fetch(input, withAuth(init))
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`)
   }
@@ -24,7 +36,7 @@ const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Pro
 }
 
 const requestOk = async (input: RequestInfo | URL, init?: RequestInit): Promise<void> => {
-  const response = await fetch(input, init)
+  const response = await fetch(input, withAuth(init))
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`)
   }
@@ -72,17 +84,32 @@ export type FriendRequestRecord = {
   from_display_name: string
 }
 
-export const fetchUsers = (userId = '') => requestJson<ApiUser[]>(urlWithUser('/users', userId))
+export type AuthResponse = {
+  token: string
+  user: ApiUser
+}
 
-export const createUser = (payload: { userId: string; displayName: string }) =>
-  requestJson<ApiUser>(`${API_URL}/users`, {
+const authenticate = (path: '/auth/register' | '/auth/login', displayName: string, password: string) =>
+  requestJson<AuthResponse>(`${API_URL}${path}`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({
-      user_id: payload.userId,
-      display_name: payload.displayName,
-    }),
+    body: JSON.stringify({ display_name: displayName, password }),
   })
+
+export const registerAccount = (displayName: string, password: string) =>
+  authenticate('/auth/register', displayName, password)
+
+export const loginAccount = (displayName: string, password: string) =>
+  authenticate('/auth/login', displayName, password)
+
+export const fetchCurrentUser = () => requestJson<ApiUser>(`${API_URL}/auth/me`)
+
+export const logoutAccount = () => requestOk(`${API_URL}/auth/logout`, { method: 'POST' })
+
+export const createWebSocketTicket = () =>
+  requestJson<{ ticket: string }>(`${API_URL}/auth/ws-ticket`, { method: 'POST' })
+
+export const fetchUsers = (userId = '') => requestJson<ApiUser[]>(urlWithUser('/users', userId))
 
 export const fetchFriends = (userId: string) => requestJson<FriendRecord[]>(urlWithUser('/friends', userId))
 

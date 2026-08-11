@@ -3,10 +3,10 @@ import {
   ChatMessage,
   ConversationRecord,
   CurrentUser,
-  createLocalUserId,
 } from '../models/types';
 
 const API_URL = 'https://yuna-im-api.vercel.app';
+let authToken = '';
 
 async function requestJson<T>(
   input: string,
@@ -16,6 +16,7 @@ async function requestJson<T>(
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...init?.headers,
     },
   });
@@ -27,7 +28,23 @@ async function requestJson<T>(
   return (await response.json()) as T;
 }
 
+async function requestOk(input: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...init?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+}
+
 export const ApiService = {
+  setAuthToken(token: string) {
+    authToken = token;
+  },
+
   wakeBackend() {
     return requestJson<{ status: string; time: string }>(`${API_URL}/health`);
   },
@@ -49,20 +66,37 @@ export const ApiService = {
     return requestJson<ChatMessage[]>(url.toString());
   },
 
-  createUser(displayName: string): Promise<ApiUser> {
-    return requestJson<ApiUser>(`${API_URL}/users`, {
+  register(displayName: string, password: string) {
+    return requestJson<{ token: string; user: ApiUser }>(`${API_URL}/auth/register`, {
       method: 'POST',
-      body: JSON.stringify({
-        user_id: createLocalUserId(),
-        display_name: displayName,
-      }),
+      body: JSON.stringify({ display_name: displayName, password }),
     });
   },
 
-  toCurrentUser(user: ApiUser): CurrentUser {
+  login(displayName: string, password: string) {
+    return requestJson<{ token: string; user: ApiUser }>(`${API_URL}/auth/login`, {
+      method: 'POST',
+      body: JSON.stringify({ display_name: displayName, password }),
+    });
+  },
+
+  fetchCurrentUser() {
+    return requestJson<ApiUser>(`${API_URL}/auth/me`);
+  },
+
+  logout() {
+    return requestOk(`${API_URL}/auth/logout`, { method: 'POST' });
+  },
+
+  createWebSocketTicket() {
+    return requestJson<{ ticket: string }>(`${API_URL}/auth/ws-ticket`, { method: 'POST' });
+  },
+
+  toCurrentUser(user: ApiUser, token: string): CurrentUser {
     return {
       id: user.user_id,
       displayName: user.display_name,
+      token,
     };
   },
 };

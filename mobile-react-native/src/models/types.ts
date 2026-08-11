@@ -8,6 +8,7 @@ export type ApiUser = {
 export type CurrentUser = {
   id: string;
   displayName: string;
+  token: string;
 };
 
 export type ConversationRecord = {
@@ -33,11 +34,6 @@ export type ChatMessage = {
   attachment_size?: number;
   time?: string;
   read_at?: string | null;
-};
-
-export const createLocalUserId = () => {
-  const randomPart = Math.random().toString(36).slice(2);
-  return `user-${Date.now()}-${randomPart}`;
 };
 
 export const getMessageKey = (message: ChatMessage) =>

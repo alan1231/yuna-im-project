@@ -10,12 +10,16 @@ type AccountSetupProps = {
   isSubmitting: boolean
   showWakeHint?: boolean
   error?: string
-  onCreate: (displayName: string) => void
-  onLogin: (displayName: string) => void
+  onCreate: (displayName: string, password: string) => void
+  onLogin: (displayName: string, password: string) => void
 }
 
 const accountSchema = z.object({
   displayName: z.string().trim().min(1).max(32),
+  password: z.string().refine((value) => {
+    const bytes = new TextEncoder().encode(value).length
+    return bytes >= 8 && bytes <= 72
+  }),
 })
 
 type AccountFormValues = z.infer<typeof accountSchema>
@@ -38,18 +42,21 @@ export default function AccountSetup({
     resolver: zodResolver(accountSchema),
     defaultValues: {
       displayName: '',
+      password: '',
     },
   })
   const displayName = watch('displayName')
 
-  const submit = handleSubmit(({ displayName: rawDisplayName }) => {
+  const password = watch('password')
+
+  const submit = handleSubmit(({ displayName: rawDisplayName, password }) => {
     const name = rawDisplayName.trim()
     if (mode === 'login') {
-      onLogin(name)
+      onLogin(name, password)
       return
     }
 
-    onCreate(name)
+    onCreate(name, password)
   })
 
   return (
@@ -102,15 +109,29 @@ export default function AccountSetup({
             />
           </label>
 
+          <label className="account-field">
+            <span>{t('account.password')}</span>
+            <input
+              {...register('password')}
+              type="password"
+              maxLength={72}
+              placeholder={t('account.passwordPlaceholder')}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            />
+          </label>
+
           {errors.displayName ? (
             <p className="account-message account-message-error">{t('account.errors.displayNameRequired')}</p>
+          ) : null}
+          {errors.password ? (
+            <p className="account-message account-message-error">{t('account.errors.passwordInvalid')}</p>
           ) : null}
           {error ? <p className="account-message account-message-error">{error}</p> : null}
           {!error && showWakeHint ? (
             <p className="account-message account-message-info">{t('account.wakeHint')}</p>
           ) : null}
 
-          <button className="account-submit" type="submit" disabled={isSubmitting || !displayName?.trim()}>
+          <button className="account-submit" type="submit" disabled={isSubmitting || !displayName?.trim() || !password}>
             {isSubmitting
               ? t('account.submitting')
               : mode === 'login'

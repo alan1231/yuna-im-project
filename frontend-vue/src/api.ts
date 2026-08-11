@@ -1,4 +1,5 @@
 import { getAdminApiUrl, getApiUrl } from './config/api'
+import { currentUser } from './session'
 import type {
   AdminStats,
   AdminUser,
@@ -14,8 +15,16 @@ const jsonHeaders = {
   'Content-Type': 'application/json',
 }
 
+const withAuth = (init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: {
+    ...(currentUser.value?.token ? { Authorization: `Bearer ${currentUser.value.token}` } : {}),
+    ...init.headers,
+  },
+})
+
 const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
-  const response = await fetch(input, init)
+  const response = await fetch(input, withAuth(init))
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`)
   }
@@ -24,7 +33,7 @@ const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Pro
 }
 
 const requestOk = async (input: RequestInfo | URL, init?: RequestInit): Promise<void> => {
-  const response = await fetch(input, init)
+  const response = await fetch(input, withAuth(init))
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`)
   }
@@ -45,17 +54,32 @@ const adminHeaders = (token?: string) => {
   }
 }
 
-export const fetchUsers = (userId = '') => requestJson<ApiUser[]>(withUser('/users', userId))
+export type AuthResponse = {
+  token: string
+  user: ApiUser
+}
 
-export const createUser = (payload: { userId: string; displayName: string }) =>
-  requestJson<ApiUser>(`${getApiUrl()}/users`, {
+const authenticate = (path: '/auth/register' | '/auth/login', displayName: string, password: string) =>
+  requestJson<AuthResponse>(`${getApiUrl()}${path}`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({
-      user_id: payload.userId,
-      display_name: payload.displayName,
-    }),
+    body: JSON.stringify({ display_name: displayName, password }),
   })
+
+export const registerAccount = (displayName: string, password: string) =>
+  authenticate('/auth/register', displayName, password)
+
+export const loginAccount = (displayName: string, password: string) =>
+  authenticate('/auth/login', displayName, password)
+
+export const fetchCurrentUser = () => requestJson<ApiUser>(`${getApiUrl()}/auth/me`)
+
+export const logoutAccount = () => requestOk(`${getApiUrl()}/auth/logout`, { method: 'POST' })
+
+export const createWebSocketTicket = () =>
+  requestJson<{ ticket: string }>(`${getApiUrl()}/auth/ws-ticket`, { method: 'POST' })
+
+export const fetchUsers = (userId = '') => requestJson<ApiUser[]>(withUser('/users', userId))
 
 export const fetchFriends = (userId: string) => requestJson<FriendRecord[]>(withUser('/friends', userId))
 

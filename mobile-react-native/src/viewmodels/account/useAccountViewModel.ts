@@ -1,18 +1,26 @@
 import { useState } from 'react';
 import { ApiService } from '../../services/api.service';
-import { AccountMode, ApiUser, CurrentUser } from '../../models/types';
+import { AccountMode, CurrentUser } from '../../models/types';
+
+const utf8ByteLength = (value: string) =>
+  Array.from(value).reduce((total, character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return total + (codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4);
+  }, 0);
 
 export function useAccountViewModel(
   onAuthenticated: (user: CurrentUser) => Promise<void>,
 ) {
   const [mode, setMode] = useState<AccountMode>('login');
   const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showWakeHint, setShowWakeHint] = useState(false);
   const [error, setError] = useState('');
 
   const normalizedName = displayName.trim();
-  const canSubmit = normalizedName.length > 0 && !isSubmitting;
+  const passwordBytes = utf8ByteLength(password);
+  const canSubmit = normalizedName.length > 0 && passwordBytes >= 8 && passwordBytes <= 72 && !isSubmitting;
 
   const copy =
     mode === 'login'
@@ -33,8 +41,9 @@ export function useAccountViewModel(
     setShowWakeHint(false);
   };
 
-  const persistUser = async (user: ApiUser) => {
-    await onAuthenticated(ApiService.toCurrentUser(user));
+  const persistUser = async (response: { token: string; user: { user_id: string; display_name: string } }) => {
+    ApiService.setAuthToken(response.token);
+    await onAuthenticated(ApiService.toCurrentUser(response.user, response.token));
   };
 
   const runWithBackendWake = async (action: () => Promise<void>) => {
@@ -62,23 +71,11 @@ export function useAccountViewModel(
     try {
       await runWithBackendWake(async () => {
         if (mode === 'create') {
-          const user = await ApiService.createUser(normalizedName);
-          await persistUser(user);
+          await persistUser(await ApiService.register(normalizedName, password));
           return;
         }
 
-        const users = await ApiService.fetchUsers();
-        const user = users.find(
-          item =>
-            item.display_name.toLowerCase() === normalizedName.toLowerCase(),
-        );
-
-        if (!user) {
-          setError('找不到這個帳號，請確認名稱是否正確。');
-          return;
-        }
-
-        await persistUser(user);
+        await persistUser(await ApiService.login(normalizedName, password));
       });
     } catch (requestError) {
       if (
@@ -102,6 +99,8 @@ export function useAccountViewModel(
     mode,
     displayName,
     setDisplayName,
+    password,
+    setPassword,
     isSubmitting,
     showWakeHint,
     error,

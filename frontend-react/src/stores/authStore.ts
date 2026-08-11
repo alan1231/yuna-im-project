@@ -9,11 +9,12 @@ const loadStoredUser = (): CurrentUser | null => {
     if (!storedValue) return null
 
     const parsed = JSON.parse(storedValue) as Partial<CurrentUser>
-    if (!parsed.id || !parsed.displayName) return null
+    if (!parsed.id || !parsed.displayName || !parsed.token) return null
 
     return {
       id: parsed.id,
       displayName: parsed.displayName,
+      token: parsed.token,
     }
   } catch {
     return null

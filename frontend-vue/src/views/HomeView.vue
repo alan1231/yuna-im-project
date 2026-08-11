@@ -1,11 +1,11 @@
 <template>
   <ChatWindow
-    v-if="currentUser"
+    v-if="currentUser && !isRestoringSession"
     :current-user="currentUser"
     @logout="logout"
   />
   <AccountSetup
-    v-else
+    v-else-if="!isRestoringSession"
     :is-submitting="isSubmitting"
     :show-wake-hint="showWakeHint"
     :error="error"
@@ -15,10 +15,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import AccountSetup from '../components/AccountSetup.vue'
 import ChatWindow from '../components/ChatWindow.vue'
-import { createUser as createUserApi, fetchUsers, wakeBackend } from '../api'
+import { fetchCurrentUser, loginAccount, logoutAccount, registerAccount, wakeBackend } from '../api'
 import { useI18n } from '../i18n'
 import { clearCurrentUser, currentUser, setCurrentUser } from '../session'
 import type { CurrentUser } from '../types'
@@ -27,10 +27,7 @@ const { t } = useI18n()
 const isSubmitting = ref(false)
 const showWakeHint = ref(false)
 const error = ref('')
-
-const createLocalUserId = () => {
-  return window.crypto?.randomUUID?.() || `user-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
+const isRestoringSession = ref(Boolean(currentUser.value))
 
 const persistUser = (user: CurrentUser) => {
   setCurrentUser(user)
@@ -55,19 +52,39 @@ const runWithBackendWake = async (action: () => Promise<void>) => {
   }
 }
 
-const createUser = async (displayName: string) => {
+onMounted(async () => {
+  if (!currentUser.value) {
+    isRestoringSession.value = false
+    return
+  }
+  try {
+    const user = await fetchCurrentUser()
+    persistUser({ id: user.user_id, displayName: user.display_name, token: currentUser.value.token })
+  } catch {
+    clearCurrentUser()
+  } finally {
+    isRestoringSession.value = false
+  }
+})
+
+const requestedPassword = (password = '') => password || window.prompt('密碼（至少 8 個字元）') || ''
+const passwordIsValid = (password: string) => {
+  const bytes = new TextEncoder().encode(password).length
+  return bytes >= 8 && bytes <= 72
+}
+
+const createUser = async (displayName: string, password = '') => {
   const name = displayName.trim()
-  if (!name || isSubmitting.value) return
+  const credential = requestedPassword(password)
+  if (!name || !passwordIsValid(credential) || isSubmitting.value) return
 
   try {
     await runWithBackendWake(async () => {
-      const user = await createUserApi({
-        userId: createLocalUserId(),
-        displayName: name,
-      })
+      const { user, token } = await registerAccount(name, credential)
       persistUser({
         id: user.user_id,
         displayName: user.display_name,
+        token,
       })
     })
   } catch (cause) {
@@ -78,22 +95,18 @@ const createUser = async (displayName: string) => {
   }
 }
 
-const loginUser = async (displayName: string) => {
+const loginUser = async (displayName: string, password = '') => {
   const name = displayName.trim()
-  if (!name || isSubmitting.value) return
+  const credential = requestedPassword(password)
+  if (!name || !passwordIsValid(credential) || isSubmitting.value) return
 
   try {
     await runWithBackendWake(async () => {
-      const users = await fetchUsers()
-      const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
-      if (!user) {
-        error.value = t('loginNotFound')
-        return
-      }
-
+      const { user, token } = await loginAccount(name, credential)
       persistUser({
         id: user.user_id,
         displayName: user.display_name,
+        token,
       })
     })
   } catch (cause) {
@@ -102,7 +115,12 @@ const loginUser = async (displayName: string) => {
   }
 }
 
-const logout = () => {
+const logout = async () => {
+  try {
+    await logoutAccount()
+  } catch (cause) {
+    console.warn('Server logout failed:', cause)
+  }
   clearCurrentUser()
   error.value = ''
 }

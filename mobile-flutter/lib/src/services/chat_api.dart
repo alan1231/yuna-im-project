@@ -9,14 +9,24 @@ import '../models/chat_room.dart';
 import '../models/user_profile.dart';
 
 class ChatApi {
-  const ChatApi();
+  String _token = '';
 
-  Future<UserProfile> createUser(String displayName) async {
-    final userId = createLocalUserId();
-    final response = await http.post(
-      Uri.parse('$apiBaseUrl/users'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'user_id': userId, 'display_name': displayName}),
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+  };
+
+  void setToken(String token) => _token = token;
+
+  Future<http.Response> _get(Uri uri) => http.get(uri, headers: _headers);
+
+  Future<http.Response> _post(Uri uri, {Object? body}) =>
+      http.post(uri, headers: _headers, body: body);
+
+  Future<UserProfile> register(String displayName, String password) async {
+    final response = await _post(
+      Uri.parse('$apiBaseUrl/auth/register'),
+      body: jsonEncode({'display_name': displayName, 'password': password}),
     );
 
     if (response.statusCode == 409) {
@@ -26,23 +36,54 @@ class ChatApi {
       throw const ApiException('建立帳號失敗。');
     }
 
+    return _profileFromAuthResponse(response);
+  }
+
+  Future<UserProfile> login(String displayName, String password) async {
+    final response = await _post(
+      Uri.parse('$apiBaseUrl/auth/login'),
+      body: jsonEncode({'display_name': displayName, 'password': password}),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw const ApiException('顯示名稱或密碼錯誤。');
+    }
+    return _profileFromAuthResponse(response);
+  }
+
+  UserProfile _profileFromAuthResponse(http.Response response) {
     final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final token = json['token'].toString();
+    final user = json['user'] as Map<String, dynamic>;
+    setToken(token);
     return UserProfile(
-      id: json['user_id'].toString(),
-      displayName: json['display_name'].toString(),
+      id: user['user_id'].toString(),
+      displayName: user['display_name'].toString(),
+      token: token,
     );
   }
 
-  Future<UserProfile> loginByDisplayName(String displayName) async {
-    final users = await loadUsers();
-    final normalized = displayName.trim().toLowerCase();
-    for (final user in users) {
-      if (user.displayName.toLowerCase() == normalized) {
-        return UserProfile(id: user.id, displayName: user.displayName);
-      }
-    }
+  Future<UserProfile> currentUser(UserProfile profile) async {
+    setToken(profile.token);
+    final response = await _get(Uri.parse('$apiBaseUrl/auth/me'));
+    if (response.statusCode != 200) throw const ApiException('登入已過期。');
+    final user = jsonDecode(response.body) as Map<String, dynamic>;
+    return UserProfile(
+      id: user['user_id'].toString(),
+      displayName: user['display_name'].toString(),
+      token: profile.token,
+    );
+  }
 
-    throw const ApiException('找不到這個帳號。');
+  Future<void> logout() async {
+    await _post(Uri.parse('$apiBaseUrl/auth/logout'));
+    setToken('');
+  }
+
+  Future<String> createWebSocketTicket() async {
+    final response = await _post(Uri.parse('$apiBaseUrl/auth/ws-ticket'));
+    if (response.statusCode != 200) throw const ApiException('即時連線驗證失敗。');
+    return (jsonDecode(response.body) as Map<String, dynamic>)['ticket']
+        .toString();
   }
 
   Future<List<ApiUser>> loadUsers({String currentUserId = ''}) async {
@@ -51,7 +92,7 @@ class ChatApi {
           ? null
           : {'user_id': currentUserId},
     );
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw const ApiException('載入使用者失敗。');
     }
@@ -67,7 +108,7 @@ class ChatApi {
     final uri = Uri.parse(
       '$apiBaseUrl/friends',
     ).replace(queryParameters: {'user_id': user.id});
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw const ApiException('載入好友失敗。');
     }
@@ -92,9 +133,8 @@ class ChatApi {
     required UserProfile user,
     required String displayName,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$apiBaseUrl/friends'),
-      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'user_id': user.id, 'display_name': displayName}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -106,9 +146,8 @@ class ChatApi {
     required UserProfile user,
     required String friendId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$apiBaseUrl/friends/delete'),
-      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'user_id': user.id, 'friend_id': friendId}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -120,7 +159,7 @@ class ChatApi {
     final uri = Uri.parse(
       '$apiBaseUrl/groups',
     ).replace(queryParameters: {'user_id': user.id});
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw const ApiException('載入群組失敗。');
     }
@@ -148,9 +187,8 @@ class ChatApi {
     required String name,
     required List<String> memberIds,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$apiBaseUrl/groups'),
-      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'user_id': user.id,
         'name': name,
@@ -179,9 +217,8 @@ class ChatApi {
     required UserProfile user,
     required String groupId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.parse('$apiBaseUrl/groups/leave'),
-      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'user_id': user.id, 'group_id': groupId}),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -193,7 +230,7 @@ class ChatApi {
     final uri = Uri.parse(
       '$apiBaseUrl/conversations',
     ).replace(queryParameters: {'user_id': user.id});
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw const ApiException('載入聊天室失敗。');
     }
@@ -232,7 +269,7 @@ class ChatApi {
         'conversation_id': room.conversationId,
       },
     );
-    final response = await http.get(uri);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw const ApiException('載入訊息失敗。');
     }

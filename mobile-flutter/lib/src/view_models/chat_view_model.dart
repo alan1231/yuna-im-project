@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -13,10 +14,11 @@ import '../services/profile_store.dart';
 import '../services/realtime_service.dart';
 
 final chatViewModelProvider = ChangeNotifierProvider<ChatViewModel>((ref) {
+  final api = ChatApi();
   return ChatViewModel(
-    api: const ChatApi(),
+    api: api,
     profileStore: const ProfileStore(),
-    realtime: RealtimeService(),
+    realtime: RealtimeService(api),
   );
 });
 
@@ -53,21 +55,31 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> restoreProfile() async {
     final restoredProfile = await _profileStore.restore();
-    user = restoredProfile;
+    if (restoredProfile != null) {
+      try {
+        user = await _api.currentUser(restoredProfile);
+        await _profileStore.save(user!);
+      } catch (_) {
+        await _profileStore.clear();
+        user = null;
+      }
+    }
     isRestoring = false;
     notifyListeners();
 
-    if (restoredProfile != null) {
-      await loadInitialChat(restoredProfile);
+    if (user != null) {
+      await loadInitialChat(user!);
     }
   }
 
   Future<void> createOrLogin({
     required String displayName,
+    required String password,
     required bool create,
   }) async {
     final name = displayName.trim();
-    if (name.isEmpty) return;
+    final passwordBytes = utf8.encode(password).length;
+    if (name.isEmpty || passwordBytes < 8 || passwordBytes > 72) return;
 
     isSubmittingName = true;
     error = '';
@@ -75,8 +87,8 @@ class ChatViewModel extends ChangeNotifier {
 
     try {
       final profile = create
-          ? await _api.createUser(name)
-          : await _api.loginByDisplayName(name);
+          ? await _api.register(name, password)
+          : await _api.login(name, password);
       await _profileStore.save(profile);
       user = profile;
       notifyListeners();
@@ -133,7 +145,7 @@ class ChatViewModel extends ChangeNotifier {
 
       if (activeRoom != null) {
         await loadMessagesForRoom(activeRoom!);
-        _connectWebSocket(profile, activeRoom!);
+        unawaited(_connectWebSocket(profile, activeRoom!));
       }
     } catch (_) {
       error = '聊天資料載入失敗。';
@@ -286,6 +298,11 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    try {
+      await _api.logout();
+    } catch (_) {
+      _api.setToken('');
+    }
     await _profileStore.clear();
     await _realtime.close();
     user = null;
@@ -304,19 +321,25 @@ class ChatViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _connectWebSocket(UserProfile profile, ChatRoom room) {
-    _realtime.connect(
-      user: profile,
-      room: room,
-      onEvent: _handleSocketEvent,
-      onDisconnected: () {
-        isConnected = false;
-        notifyListeners();
-      },
-    );
-    isConnected = true;
-    notifyListeners();
-    _realtime.sendActiveConversation(room);
+  Future<void> _connectWebSocket(UserProfile profile, ChatRoom room) async {
+    try {
+      await _realtime.connect(
+        user: profile,
+        room: room,
+        onEvent: _handleSocketEvent,
+        onDisconnected: () {
+          isConnected = false;
+          notifyListeners();
+        },
+      );
+      isConnected = true;
+      notifyListeners();
+      _realtime.sendActiveConversation(room);
+    } catch (_) {
+      isConnected = false;
+      error = '即時連線驗證失敗。';
+      notifyListeners();
+    }
   }
 
   void _handleSocketEvent(Map<String, dynamic> event) {

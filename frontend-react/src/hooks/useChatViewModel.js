@@ -5,6 +5,7 @@ import {
   addFriend as addFriendApi,
   chatQueryKeys,
   createGroup as createGroupApi,
+  createWebSocketTicket,
   deleteFriend as deleteFriendApi,
   fetchConversations,
   fetchFriendRequests,
@@ -172,6 +173,7 @@ export const useChatViewModel = (currentUser) => {
   const reloadChatDataRef = useRef(null)
   const reconnectTimerRef = useRef(null)
   const shouldReconnectRef = useRef(false)
+  const isConnectingRef = useRef(false)
   const hasConnectedRef = useRef(false)
   const peerConnectionRef = useRef(null)
   const localStreamRef = useRef(null)
@@ -791,8 +793,9 @@ export const useChatViewModel = (currentUser) => {
     cleanupVoiceCall()
   }, [cleanupVoiceCall])
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (
+      isConnectingRef.current ||
       socketRef.current?.readyState === WebSocket.OPEN ||
       socketRef.current?.readyState === WebSocket.CONNECTING
     ) return
@@ -803,11 +806,27 @@ export const useChatViewModel = (currentUser) => {
       reconnectTimerRef.current = null
     }
 
-    const url = new URL(WS_URL)
-    url.searchParams.set('user_id', currentUser.id)
-    url.searchParams.set('conversation_id', getActiveRoom().conversationId)
-    const socket = new WebSocket(url)
-    socketRef.current = socket
+    isConnectingRef.current = true
+    let socket
+    try {
+      const { ticket } = await createWebSocketTicket()
+      if (!shouldReconnectRef.current) return
+
+      const url = new URL(WS_URL)
+      url.searchParams.set('ticket', ticket)
+      url.searchParams.set('conversation_id', getActiveRoom().conversationId)
+      socket = new WebSocket(url)
+      socketRef.current = socket
+    } catch (error) {
+      console.error('WebSocket ticket failed:', error)
+      setConnectionError(t('chat.errors.connectionFailed', { url: WS_URL }))
+      if (shouldReconnectRef.current) {
+        reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
+      }
+      return
+    } finally {
+      isConnectingRef.current = false
+    }
 
     socket.onopen = () => {
       setIsConnected(true)
@@ -846,7 +865,7 @@ export const useChatViewModel = (currentUser) => {
         reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
       }
     }
-  }, [addSystemMessage, cleanupVoiceCall, currentUser.id, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
+  }, [addSystemMessage, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
 
   useEffect(() => {
     connectRef.current = connect

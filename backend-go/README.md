@@ -14,7 +14,11 @@ The server reads these environment variables and falls back to local development
 | `ALLOWED_ORIGINS` | `*` |
 | `ADMIN_TOKEN` | empty |
 
-MongoDB stores durable chat data. Redis stores short-lived presence state such as online keys and per-user WebSocket connection counts.
+MongoDB stores durable chat data and bcrypt password hashes. Redis stores presence, 30-day login sessions, and one-time WebSocket tickets.
+
+User APIs require `Authorization: Bearer <session-token>`. Accounts use `POST /auth/register` and `POST /auth/login`; WebSocket clients obtain a 60-second one-time ticket from `POST /auth/ws-ticket` before connecting.
+
+Legacy accounts without passwords must be migrated by an administrator through `POST /admin/users/set-password`; this endpoint is disabled unless `ADMIN_TOKEN` is configured.
 
 When `ADMIN_TOKEN` is set, admin APIs require either `X-Admin-Token: <token>` or `Authorization: Bearer <token>`.
 

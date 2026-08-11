@@ -20,6 +20,7 @@ Rules:
 
 - Start new code changes from `dev`, not `main`.
 - Before editing, sync `dev` from the latest `main`.
+- Before every change set, inspect `git status` and confirm the active branch.
 - Keep untested work on `dev`.
 - Push `main` only when the change is ready to deploy.
 

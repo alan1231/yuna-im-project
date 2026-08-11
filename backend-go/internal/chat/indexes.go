@@ -92,8 +92,9 @@ func messageIndexes() []mongo.IndexModel {
 	}
 }
 
-// userIndexes keep account lookup stable. display_name is intentionally not
-// unique yet because case-insensitive uniqueness needs a normalized field.
+// userIndexes keep IDs unique and use a normalized login_name for atomic,
+// case-insensitive account registration. Legacy rows without login_name are
+// excluded until an administrator assigns their initial password.
 func userIndexes() []mongo.IndexModel {
 	return []mongo.IndexModel{
 		{
@@ -105,6 +106,13 @@ func userIndexes() []mongo.IndexModel {
 		{
 			Keys:    bson.D{{Key: "display_name", Value: 1}},
 			Options: options.Index().SetName("display_name"),
+		},
+		{
+			Keys: bson.D{{Key: "login_name", Value: 1}},
+			Options: options.Index().
+				SetName("login_name_unique").
+				SetUnique(true).
+				SetPartialFilterExpression(bson.M{"login_name": bson.M{"$type": "string"}}),
 		},
 	}
 }

@@ -12,10 +12,12 @@ class AccountScreen extends ConsumerStatefulWidget {
 
 class _AccountScreenState extends ConsumerState<AccountScreen> {
   final TextEditingController _controller = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   @override
   void dispose() {
     _controller.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -45,6 +47,17 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration(
                   labelText: '顯示名稱',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: '密碼',
+                  hintText: '至少 8 個字元',
                   border: OutlineInputBorder(),
                 ),
                 onSubmitted: (_) => _login(),
@@ -85,12 +98,20 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
   void _login() {
     ref
         .read(chatViewModelProvider)
-        .createOrLogin(displayName: _controller.text, create: false);
+        .createOrLogin(
+          displayName: _controller.text,
+          password: _passwordController.text,
+          create: false,
+        );
   }
 
   void _create() {
     ref
         .read(chatViewModelProvider)
-        .createOrLogin(displayName: _controller.text, create: true);
+        .createOrLogin(
+          displayName: _controller.text,
+          password: _passwordController.text,
+          create: true,
+        );
   }
 }

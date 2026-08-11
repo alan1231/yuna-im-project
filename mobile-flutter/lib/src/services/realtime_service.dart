@@ -6,22 +6,27 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../core/config.dart';
 import '../models/chat_room.dart';
 import '../models/user_profile.dart';
+import 'chat_api.dart';
 
 class RealtimeService {
+  RealtimeService(this._api);
+
+  final ChatApi _api;
   WebSocketChannel? _socket;
   StreamSubscription<dynamic>? _subscription;
 
-  void connect({
+  Future<void> connect({
     required UserProfile user,
     required ChatRoom room,
     required void Function(Map<String, dynamic> event) onEvent,
     required void Function() onDisconnected,
-  }) {
-    close();
+  }) async {
+    await close();
 
+    final ticket = await _api.createWebSocketTicket();
     final uri = Uri.parse(wsBaseUrl).replace(
       queryParameters: {
-        'user_id': user.id,
+        'ticket': ticket,
         'conversation_id': room.conversationId,
       },
     );

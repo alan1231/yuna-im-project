@@ -21,8 +21,10 @@ func TestUserIndexes(t *testing.T) {
 	assertIndexNames(t, indexes, []string{
 		"user_id_unique",
 		"display_name",
+		"login_name_unique",
 	})
 	assertUniqueIndex(t, indexes, "user_id_unique")
+	assertUniqueIndex(t, indexes, "login_name_unique")
 }
 
 func TestFriendIndexes(t *testing.T) {

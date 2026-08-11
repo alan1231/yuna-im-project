@@ -1,41 +1,29 @@
 <template>
   <section class="account-screen">
     <div class="account-entry">
-      <aside class="account-brand">
-        <p class="eyebrow">{{ t('brand') }}</p>
-        <h1>{{ t('tagline') }}</h1>
-        <p>
-          Vue 3 版本的前端，保留登入、聊天室與管理頁的核心結構，並直接接到現有 Go 後端。
-        </p>
-        <div class="account-feature-list">
-          <span>Vue 3</span>
-          <span>Vite</span>
-          <span>WebSocket</span>
-          <span>Admin console</span>
+      <div class="account-hero">
+        <div class="account-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="presentation">
+            <path
+              d="M6 5h12a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4h-7l-4.5 3.5c-.4.3-.9 0-.9-.5V17H6a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4z"
+              fill="currentColor"
+            />
+          </svg>
         </div>
-      </aside>
+        <h1>{{ t('brand') }}</h1>
+        <p class="account-hero-subtitle">{{ t('accountSubtitle') }}</p>
+        <p class="account-hero-copy">
+          {{ t('accountDescription') }}
+        </p>
+      </div>
 
       <div class="account-panel">
         <div class="account-panel-heading">
           <span>{{ modeLabel }}</span>
           <h2>{{ mode === 'create' ? t('createAccount') : t('signIn') }}</h2>
           <p class="account-copy">
-            {{ mode === 'create' ? '建立新的顯示名稱後即可進入聊天室。' : '輸入既有顯示名稱直接登入。' }}
+            {{ mode === 'create' ? t('accountCreateCopy') : t('accountSignInCopy') }}
           </p>
-        </div>
-
-        <div class="account-api-toggle">
-          <div class="account-api-toggle-copy">
-            <span>{{ t('apiEnvironment') }}</span>
-            <strong>{{ apiMode === 'local' ? t('apiModeLocal') : t('apiModeOnline') }}</strong>
-          </div>
-          <button
-            type="button"
-            class="account-api-toggle-button"
-            @click="toggleApiMode"
-          >
-            {{ t('switchApiMode') }}
-          </button>
         </div>
 
         <div class="account-mode-switch">
@@ -61,7 +49,20 @@
             <input
               v-model="displayName"
               autocomplete="nickname"
-              :placeholder="t('displayNameHint')"
+              :placeholder="t('displayNameHintExample')"
+              :disabled="isSubmitting"
+            />
+            <small>{{ t('displayNameHelper') }}</small>
+          </label>
+
+          <label class="account-field">
+            <span>{{ t('password') }}</span>
+            <input
+              v-model="password"
+              type="password"
+              maxlength="72"
+              :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+              :placeholder="t('passwordHint')"
               :disabled="isSubmitting"
             />
           </label>
@@ -73,10 +74,22 @@
             {{ t('wakingBackend') }}
           </p>
 
-          <button class="account-submit" type="submit" :disabled="isSubmitting || !displayName.trim()">
+          <button class="account-submit" type="submit" :disabled="isSubmitting || !displayName.trim() || !passwordIsValid">
             {{ isSubmitting ? t('working') : actionLabel }}
           </button>
+
+          <button type="button" class="account-email-link">
+            {{ t('emailLogin') }}
+          </button>
         </form>
+
+        <div class="account-api-toggle">
+          <div class="account-api-toggle-copy">
+            <span>{{ t('environment') }}</span>
+            <strong>{{ t('apiModeOnline') }}</strong>
+            <small>{{ t('environmentHint') }}</small>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -84,7 +97,6 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { apiMode, toggleApiMode } from '../config/api'
 import { useI18n } from '../i18n'
 
 const props = defineProps<{
@@ -94,26 +106,31 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (event: 'create', displayName: string): void
-  (event: 'login', displayName: string): void
+  (event: 'create', displayName: string, password: string): void
+  (event: 'login', displayName: string, password: string): void
 }>()
 
 const { t } = useI18n()
 const mode = ref<'create' | 'login'>('create')
 const displayName = ref('')
+const password = ref('')
+const passwordIsValid = computed(() => {
+  const bytes = new TextEncoder().encode(password.value).length
+  return bytes >= 8 && bytes <= 72
+})
 
 const modeLabel = computed(() => (mode.value === 'create' ? t('createAccount') : t('signIn')))
-const actionLabel = computed(() => (mode.value === 'create' ? t('submitCreate') : t('submitSignIn')))
+const actionLabel = computed(() => (mode.value === 'create' ? t('continue') : t('signIn')))
 
 const submit = () => {
   const name = displayName.value.trim()
-  if (!name || props.isSubmitting) return
+  if (!name || !passwordIsValid.value || props.isSubmitting) return
 
   if (mode.value === 'create') {
-    emit('create', name)
+    emit('create', name, password.value)
     return
   }
 
-  emit('login', name)
+  emit('login', name, password.value)
 }
 </script>

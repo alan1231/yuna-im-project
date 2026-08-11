@@ -6,11 +6,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-type createUserRequest struct {
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name"`
-}
-
 type userResponse struct {
 	UserID      string    `json:"user_id" bson:"user_id"`
 	DisplayName string    `json:"display_name" bson:"display_name"`

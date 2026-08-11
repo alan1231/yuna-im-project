@@ -98,6 +98,23 @@ export function AccountScreen({
               />
             </View>
 
+            <View style={accountStyles.fieldGroup}>
+              <Text style={accountStyles.label}>密碼</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoComplete={vm.mode === 'login' ? 'current-password' : 'new-password'}
+                maxLength={72}
+                onChangeText={vm.setPassword}
+                onSubmitEditing={vm.submit}
+                placeholder="至少 8 個字元"
+                placeholderTextColor="#9ca3af"
+                returnKeyType="done"
+                secureTextEntry
+                style={accountStyles.input}
+                value={vm.password}
+              />
+            </View>
+
             {vm.error ? <Text style={accountStyles.errorText}>{vm.error}</Text> : null}
             {!vm.error && vm.showWakeHint ? (
               <Text style={accountStyles.infoText}>後端正在喚醒，請稍候。</Text>

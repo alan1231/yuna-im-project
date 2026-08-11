@@ -334,6 +334,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   addFriend,
   createGroup,
+  createWebSocketTicket,
   deleteFriend,
   fetchConversations,
   fetchFriendRequests,
@@ -437,6 +438,7 @@ const peerConnectionRef = ref<RTCPeerConnection | null>(null)
 const localStreamRef = ref<MediaStream | null>(null)
 const pendingOfferRef = ref<any | null>(null)
 let socket: WebSocket | null = null
+let connectionGeneration = 0
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 1600
@@ -1044,6 +1046,7 @@ const clearActionState = () => {
 }
 
 const closeSocket = () => {
+  connectionGeneration += 1
   if (!socket) return
   socket.onopen = null
   socket.onclose = null
@@ -1068,13 +1071,24 @@ const loadMessages = async (conversationId: string) => {
   }
 }
 
-const connectSocket = (conversation: ConversationRecord) => {
+const connectSocket = async (conversation: ConversationRecord) => {
   closeSocket()
+  const generation = connectionGeneration
+  connectionState.value = 'connecting'
+  let ticket: string
+  try {
+    ticket = (await createWebSocketTicket()).ticket
+  } catch (cause) {
+    if (generation !== connectionGeneration) return
+    console.error('WebSocket ticket failed:', cause)
+    connectionState.value = 'error'
+    return
+  }
+  if (generation !== connectionGeneration || selectedConversationId.value !== conversation.conversation_id) return
   const url = new URL(`${getWsUrl()}/ws`)
-  url.searchParams.set('user_id', props.currentUser.id)
+  url.searchParams.set('ticket', ticket)
   url.searchParams.set('conversation_id', conversation.conversation_id)
 
-  connectionState.value = 'connecting'
   socket = new WebSocket(url.toString())
 
   socket.onopen = () => {

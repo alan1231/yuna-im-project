@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -402,8 +402,6 @@ func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	switch r.Method {
 	case http.MethodGet:
 		listUsers(w, r, client)
-	case http.MethodPost:
-		createUser(w, r, client)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -411,7 +409,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 }
 
 func listUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 
 	filter := bson.M{}
 	if userID != "" {
@@ -444,73 +442,6 @@ func listUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	}
 }
 
-func createUser(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	var req createUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-
-	req.UserID = strings.TrimSpace(req.UserID)
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
-	if req.UserID == "" || req.DisplayName == "" || len([]rune(req.DisplayName)) > 32 {
-		http.Error(w, "user_id and display_name are required", http.StatusBadRequest)
-		return
-	}
-
-	now := time.Now()
-	collection := client.Database(databaseName).Collection(usersName)
-	existingUserCount, err := collection.CountDocuments(r.Context(), bson.M{
-		"user_id": bson.M{"$ne": req.UserID},
-		"display_name": bson.M{
-			"$regex":   "^" + regexp.QuoteMeta(req.DisplayName) + "$",
-			"$options": "i",
-		},
-	})
-	if err != nil {
-		log.Printf("使用者名稱檢查失敗: %v", err)
-		http.Error(w, "check display name failed", http.StatusInternalServerError)
-		return
-	}
-	if existingUserCount > 0 {
-		http.Error(w, "display name already exists", http.StatusConflict)
-		return
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"display_name": req.DisplayName,
-			"updated_at":   now,
-		},
-		"$setOnInsert": bson.M{
-			"user_id":    req.UserID,
-			"created_at": now,
-			"online":     false,
-			"last_seen":  now,
-		},
-	}
-	_, err = collection.UpdateOne(
-		r.Context(),
-		bson.M{"user_id": req.UserID},
-		update,
-		options.Update().SetUpsert(true),
-	)
-	if err != nil {
-		log.Printf("使用者寫入 MongoDB 失敗: %v", err)
-		http.Error(w, "create user failed", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(userResponse{
-		UserID:      req.UserID,
-		DisplayName: req.DisplayName,
-		CreatedAt:   now,
-	}); err != nil {
-		log.Printf("使用者回應 JSON 失敗: %v", err)
-	}
-}
-
 func handleFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	applyCORS(w)
 
@@ -530,7 +461,7 @@ func handleFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client)
 }
 
 func listFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
@@ -581,7 +512,7 @@ func createFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client) 
 		return
 	}
 
-	req.UserID = strings.TrimSpace(req.UserID)
+	req.UserID = authenticatedUserID(r)
 	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if req.UserID == "" || req.DisplayName == "" || len([]rune(req.DisplayName)) > 32 {
 		http.Error(w, "user_id and display_name are required", http.StatusBadRequest)
@@ -662,7 +593,7 @@ func handleDeleteFriend(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 		return
 	}
 
-	req.UserID = strings.TrimSpace(req.UserID)
+	req.UserID = authenticatedUserID(r)
 	req.FriendID = strings.TrimSpace(req.FriendID)
 	if req.UserID == "" || req.FriendID == "" || req.UserID == req.FriendID {
 		http.Error(w, "user_id and friend_id are required", http.StatusBadRequest)
@@ -708,7 +639,7 @@ func handleFriendRequests(w http.ResponseWriter, r *http.Request, client *mongo.
 }
 
 func listFriendRequests(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
@@ -747,7 +678,7 @@ func respondToFriendRequest(w http.ResponseWriter, r *http.Request, client *mong
 		return
 	}
 
-	req.UserID = strings.TrimSpace(req.UserID)
+	req.UserID = authenticatedUserID(r)
 	req.RequestID = strings.TrimSpace(req.RequestID)
 	if req.UserID == "" || req.RequestID == "" {
 		http.Error(w, "user_id and request_id are required", http.StatusBadRequest)
@@ -843,7 +774,7 @@ func handleGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client, 
 }
 
 func listGroups(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
@@ -882,7 +813,7 @@ func createGroup(w http.ResponseWriter, r *http.Request, client *mongo.Client, h
 		return
 	}
 
-	req.UserID = strings.TrimSpace(req.UserID)
+	req.UserID = authenticatedUserID(r)
 	req.Name = strings.TrimSpace(req.Name)
 	memberIDs := uniqueNonEmptyStrings(append(req.MemberIDs, req.UserID))
 	if req.UserID == "" || req.Name == "" || len([]rune(req.Name)) > 32 || len(memberIDs) < 2 {
@@ -962,7 +893,7 @@ func handleLeaveGroup(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 		return
 	}
 
-	req.UserID = strings.TrimSpace(req.UserID)
+	req.UserID = authenticatedUserID(r)
 	req.GroupID = strings.TrimSpace(req.GroupID)
 	if req.UserID == "" || req.GroupID == "" {
 		http.Error(w, "user_id and group_id are required", http.StatusBadRequest)
@@ -990,11 +921,24 @@ func handleLeaveGroup(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
-func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, redisClient *redis.Client, presence *PresenceStore, hub *changeStreamHub) {
-	userID := r.URL.Query().Get("user_id")
+func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, redisClient *redis.Client, sessions *SessionStore, presence *PresenceStore, hub *changeStreamHub) {
+	userID, err := sessions.ConsumeWSTicket(r.Context(), r.URL.Query().Get("ticket"))
+	if err != nil {
+		http.Error(w, "invalid websocket ticket", http.StatusUnauthorized)
+		return
+	}
 	conversationID := r.URL.Query().Get("conversation_id")
-	if userID == "" || conversationID == "" {
-		http.Error(w, "user_id and conversation_id are required", http.StatusBadRequest)
+	if conversationID == "" {
+		http.Error(w, "conversation_id is required", http.StatusBadRequest)
+		return
+	}
+	exists, err := userExists(r.Context(), client, userID)
+	if err != nil {
+		http.Error(w, "user lookup unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !exists {
+		http.Error(w, "user not found", http.StatusUnauthorized)
 		return
 	}
 
@@ -1007,6 +951,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	go closeDeletedUserConnection(ctx, client, userID, ws)
 
 	if err := presence.Connect(ctx, userID); err != nil {
 		log.Printf("Redis 使用者在線狀態設定失敗: %v", err)
@@ -1083,6 +1028,30 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	}
 }
 
+func userExists(ctx context.Context, client *mongo.Client, userID string) (bool, error) {
+	count, err := client.Database(databaseName).Collection(usersName).CountDocuments(
+		ctx, bson.M{"user_id": userID}, options.Count().SetLimit(1),
+	)
+	return count == 1, err
+}
+
+func closeDeletedUserConnection(ctx context.Context, client *mongo.Client, userID string, ws *websocket.Conn) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			exists, err := userExists(ctx, client, userID)
+			if err == nil && !exists {
+				ws.Close()
+				return
+			}
+		}
+	}
+}
+
 func writeWebSocketEvents(ctx context.Context, ws *websocket.Conn, client *wsClient) {
 	for {
 		select {
@@ -1114,7 +1083,7 @@ func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client
 		return
 	}
 
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 	conversationID := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
 	if userID == "" || conversationID == "" {
 		http.Error(w, "user_id and conversation_id are required", http.StatusBadRequest)
@@ -1172,7 +1141,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		return
 	}
 
-	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	userID := authenticatedUserID(r)
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
@@ -1559,6 +1528,25 @@ func Run(cfg Config) error {
 		return nil
 	}
 	presence := NewPresenceStore(redisClient, client)
+	sessions := NewSessionStore(redisClient)
+	authenticateSession := func(ctx context.Context, token string) (string, error) {
+		userID, err := sessions.Authenticate(ctx, token)
+		if err != nil {
+			if !errors.Is(err, redis.Nil) {
+				return "", fmt.Errorf("%w: redis session lookup", errAuthenticationUnavailable)
+			}
+			return "", err
+		}
+		exists, err := userExists(ctx, client, userID)
+		if err != nil {
+			return "", fmt.Errorf("%w: mongo user lookup", errAuthenticationUnavailable)
+		}
+		if !exists {
+			sessions.Delete(ctx, token)
+			return "", mongo.ErrNoDocuments
+		}
+		return userID, nil
+	}
 	hubCtx, stopHub := context.WithCancel(context.Background())
 	defer stopHub()
 	hub := newChangeStreamHub(client)
@@ -1571,33 +1559,48 @@ func Run(cfg Config) error {
 	go runVoiceSignals(hub, voiceSubscription)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		handleRegister(w, r, client, sessions)
+	})
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		handleLogin(w, r, client, sessions)
+	})
+	mux.HandleFunc("/auth/logout", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
+		handleLogout(w, r, sessions)
+	}))
+	mux.HandleFunc("/auth/me", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
+		handleMe(w, r, client)
+	}))
+	mux.HandleFunc("/auth/ws-ticket", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
+		handleWSTicket(w, r, sessions)
+	}))
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		handleConnections(w, r, client, redisClient, presence, hub)
+		handleConnections(w, r, client, redisClient, sessions, presence, hub)
 	})
-	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/users", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleUsers(w, r, client)
-	})
-	mux.HandleFunc("/friends", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/friends", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleFriends(w, r, client)
-	})
-	mux.HandleFunc("/friends/delete", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/friends/delete", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleDeleteFriend(w, r, client)
-	})
-	mux.HandleFunc("/friend-requests", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/friend-requests", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleFriendRequests(w, r, client)
-	})
-	mux.HandleFunc("/groups", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/groups", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleGroups(w, r, client, hub)
-	})
-	mux.HandleFunc("/groups/leave", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/groups/leave", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleLeaveGroup(w, r, client)
-	})
-	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/messages", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleMessages(w, r, client)
-	})
-	mux.HandleFunc("/conversations", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/conversations", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleConversations(w, r, client)
-	})
+	}))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		handleHealth(w, r, healthCheck)
 	})

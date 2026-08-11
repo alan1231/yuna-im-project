@@ -50,6 +50,63 @@ func registerAdminRoutes(mux *http.ServeMux, client *mongo.Client, redisClient *
 
 	mux.HandleFunc("/admin/stats", admin.withAdminAuth(admin.handleStats))
 	mux.HandleFunc("/admin/users", admin.withAdminAuth(admin.handleUsers))
+	mux.HandleFunc("/admin/users/set-password", admin.withAdminAuth(admin.handleSetUserPassword))
+}
+
+type setUserPasswordRequest struct {
+	UserID   string `json:"user_id"`
+	Password string `json:"password"`
+}
+
+func (admin *adminServer) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
+	if admin.adminToken == "" {
+		http.Error(w, "ADMIN_TOKEN is required", http.StatusServiceUnavailable)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req setUserPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	req.UserID = strings.TrimSpace(req.UserID)
+	var user authUser
+	users := admin.mongo.Database(databaseName).Collection(usersName)
+	if err := users.FindOne(r.Context(), bson.M{"user_id": req.UserID}).Decode(&user); err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if err := validateCredentials(user.DisplayName, req.Password); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	hash, err := hashPassword(req.Password)
+	if err != nil {
+		http.Error(w, "hash password failed", http.StatusInternalServerError)
+		return
+	}
+	result, err := users.UpdateOne(r.Context(), bson.M{
+		"user_id": req.UserID, "password_hash": bson.M{"$in": bson.A{"", nil}},
+	}, bson.M{"$set": bson.M{
+		"login_name": normalizeLoginName(user.DisplayName), "password_hash": hash, "updated_at": time.Now(),
+	}})
+	if mongo.IsDuplicateKeyError(err) {
+		http.Error(w, "duplicate login name", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "set password failed", http.StatusInternalServerError)
+		return
+	}
+	if result.ModifiedCount != 1 {
+		http.Error(w, "password already configured", http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // withAdminAuth is a lightweight token gate for demo/admin usage. A production

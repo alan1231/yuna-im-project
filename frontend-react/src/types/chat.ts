@@ -1,6 +1,7 @@
 export type CurrentUser = {
   id: string
   displayName: string
+  token: string
 }
 
 export type ApiUser = {

@@ -24,6 +24,7 @@ export function useMessageThreadViewModel(
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const shouldReconnectRef = useRef(true);
+  const isConnectingRef = useRef(false);
 
   const clearReconnectTimer = useCallback(() => {
     if (!reconnectTimerRef.current) return;
@@ -91,8 +92,9 @@ export function useMessageThreadViewModel(
     loadMessages();
   }, [loadMessages]);
 
-  const connectSocket = useCallback(() => {
+  const connectSocket = useCallback(async () => {
     clearReconnectTimer();
+    if (isConnectingRef.current) return;
     const existingSocket = socketRef.current;
     if (
       existingSocket &&
@@ -102,8 +104,24 @@ export function useMessageThreadViewModel(
       return;
     }
 
+    isConnectingRef.current = true;
+    let ticket: string;
+    try {
+      ticket = (await ApiService.createWebSocketTicket()).ticket;
+    } catch (ticketError) {
+      console.error('WebSocket ticket failed:', ticketError);
+      setError('即時連線驗證失敗，正在重新連線。');
+      if (shouldReconnectRef.current) {
+        reconnectTimerRef.current = setTimeout(() => connectSocket(), 2000);
+      }
+      return;
+    } finally {
+      isConnectingRef.current = false;
+    }
+    if (!shouldReconnectRef.current) return;
+
     const url = new URL(WS_URL);
-    url.searchParams.set('user_id', user.id);
+    url.searchParams.set('ticket', ticket);
     url.searchParams.set('conversation_id', conversation.conversation_id);
 
     const socket = new WebSocket(url.toString());
@@ -164,7 +182,6 @@ export function useMessageThreadViewModel(
     applyReadReceipt,
     clearReconnectTimer,
     conversation.conversation_id,
-    user.id,
   ]);
 
   useEffect(() => {

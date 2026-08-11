@@ -20,9 +20,17 @@ ws://192.168.0.71:8080/ws
 
 ## Auth Model
 
-目前是 demo 模式，身份由 client 傳 `user_id` 表示。
+使用顯示名稱與密碼登入。密碼以 bcrypt 儲存在 MongoDB，登入後的 opaque Session token 儲存在 Redis 30 天。
 
-正式產品化前需要改成 login/session/JWT，不能信任 client 自行帶入的 `user_id`。
+除註冊、登入與 health 外，HTTP API 都需要：
+
+```http
+Authorization: Bearer <session-token>
+```
+
+後端只信任 Session 綁定的身份；舊 client 即使傳入 `user_id`，也會被忽略。
+
+既有、尚未設定密碼的帳號不可公開搶先認領。管理員需先設定 `ADMIN_TOKEN`，再呼叫 `POST /admin/users/set-password` 設定初始密碼；聊天資料與 user id 都會保留。
 
 ## Common Types
 
@@ -76,44 +84,54 @@ MongoDB 訊息目前直接回傳 map，所以 Flutter 端要能容忍額外欄�
 
 ## HTTP Endpoints
 
-### Create Or Update User
+### Register A New Account
 
 ```http
-POST /users
+POST /auth/register
 Content-Type: application/json
 ```
 
-Request:
+```json
+{"display_name":"Yuna","password":"at-least-8-characters"}
+```
+
+### Login
+
+```http
+POST /auth/login
+Content-Type: application/json
+```
+
+Register 與 login 都回傳：
 
 ```json
 {
-  "user_id": "user-123",
-  "display_name": "Yuna"
+  "token": "opaque-session-token",
+  "user": {"user_id":"user-123","display_name":"Yuna"}
 }
 ```
 
-Response:
+密碼長度為 8–72 bytes。另有 `GET /auth/me` 驗證目前 Session、`POST /auth/logout` 刪除 Session。
+
+### Set Initial Password For A Legacy Account (Admin)
+
+```http
+POST /admin/users/set-password
+X-Admin-Token: <admin-token>
+Content-Type: application/json
+```
 
 ```json
-{
-  "user_id": "user-123",
-  "display_name": "Yuna",
-  "created_at": "2026-06-01T09:00:00Z",
-  "online": false,
-  "last_seen": "2026-06-01T09:00:00Z"
-}
+{"user_id":"existing-user-id","password":"initial-password"}
 ```
 
-Notes:
-
-- `display_name` 不可空白。
-- `display_name` 最多 32 個字元。
-- 重複名稱會回 `409 Conflict`。
+此端點在 `ADMIN_TOKEN` 未設定時會停用。設定後，使用者即可從一般 login 登入。
 
 ### List Users
 
 ```http
-GET /users?user_id=user-123
+GET /users
+Authorization: Bearer <session-token>
 ```
 
 Response:
@@ -132,13 +150,12 @@ Response:
 
 Notes:
 
-- `user_id` query 可選。
-- 有帶 `user_id` 時，後端會排除自己。
+- 後端依 Session 排除目前使用者。
 
 ### List Friends
 
 ```http
-GET /friends?user_id=user-123
+GET /friends
 ```
 
 Response:
@@ -189,7 +206,7 @@ Response:
 ### List Pending Friend Requests
 
 ```http
-GET /friend-requests?user_id=user-123
+GET /friend-requests
 ```
 
 Response:
@@ -238,7 +255,7 @@ If `accept` is `false`, response status will be `rejected`.
 ### List Conversations
 
 ```http
-GET /conversations?user_id=user-123
+GET /conversations
 ```
 
 Response:
@@ -262,7 +279,7 @@ Response:
 ### List Messages
 
 ```http
-GET /messages?user_id=user-123&conversation_id=dm:user-123:user-456
+GET /messages?conversation_id=dm:user-123:user-456
 ```
 
 Response:
@@ -287,8 +304,8 @@ Response:
 
 Notes:
 
-- 後端會確認 `conversation_id` 包含 `user_id`。
-- 呼叫後會把該 conversation 內收給 `user_id` 的未讀訊息標記為已讀。
+- 後端會確認 `conversation_id` 包含 Session 使用者。
+- 呼叫後會把該 conversation 內收給目前使用者的未讀訊息標記為已讀。
 - 目前最多回最近 100 筆。
 
 ## WebSocket
@@ -296,12 +313,12 @@ Notes:
 ### Connect
 
 ```text
-ws://localhost:8080/ws?user_id=user-123&conversation_id=dm:user-123:user-456
+ws://localhost:8080/ws?ticket=<one-time-ticket>&conversation_id=dm:user-123:user-456
 ```
 
 Query:
 
-- `user_id`: 目前使用者 id。
+- `ticket`: 先以 Bearer Session 呼叫 `POST /auth/ws-ticket` 取得；60 秒內有效且只能使用一次。
 - `conversation_id`: 初始開啟的 conversation id。
 
 ### Send Active Conversation
@@ -335,7 +352,7 @@ Query:
 
 Notes:
 
-- Go 後端會以 WebSocket query 的 `user_id` 當真正 sender。
+- Go 後端會以一次性 ticket 綁定的使用者當真正 sender。
 - Go 後端會用 `recipient_id` 重新計算 `conversation_id`。
 - Flutter 端仍可送 `conversation_id`，但不要依賴它作為權限依據。
 

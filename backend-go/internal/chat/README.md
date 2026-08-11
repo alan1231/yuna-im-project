@@ -4,7 +4,8 @@ This package owns the Go side of the IM system.
 
 ## Responsibilities
 
-- Public chat HTTP APIs: users, friends, friend requests, messages, conversations.
+- Password registration/login and Redis-backed sessions.
+- Authenticated chat HTTP APIs: users, friends, friend requests, messages, conversations.
 - WebSocket sessions for live chat.
 - Shared MongoDB Change Stream hub for real-time event fanout.
 - Redis-backed presence and MongoDB presence snapshots.
@@ -17,12 +18,12 @@ This package owns the Go side of the IM system.
 - Frontend formatting or UI-specific display logic.
 - Stock lookup or external finance APIs.
 - Long-running bot work.
-- Production-grade login/session management.
 
 ## Key Files
 
 - `server.go`: HTTP routes, WebSocket lifecycle, Change Stream hub, message history, conversations, read receipts.
 - `presence.go`: Redis connection counts and online TTLs.
+- `auth.go`: bcrypt credentials, Redis sessions, Bearer middleware, and one-time WebSocket tickets.
 - `indexes.go`: MongoDB indexes used by chat and admin queries.
 - `config.go`: environment-backed runtime config.
 - `admin.go`: admin endpoints for stats, users, deletion, and token gate.

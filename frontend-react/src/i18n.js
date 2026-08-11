@@ -27,6 +27,8 @@ const resources = {
         create: '建立',
         displayName: '顯示名稱',
         placeholder: '例如 Yuna',
+        password: '密碼',
+        passwordPlaceholder: '至少 8 個字元',
         wakeHint: '免費雲端服務正在喚醒，第一次連線可能需要稍等。',
         submitting: '處理中',
         submitCreate: '建立帳號',
@@ -36,6 +38,7 @@ const resources = {
           loginNotFound: '找不到這個帳號，請確認名稱是否正確。',
           loginFailed: '登入失敗，請確認 Go 後端已啟動。',
           displayNameRequired: '請輸入顯示名稱。',
+          passwordInvalid: '密碼需為 8 到 72 個字元。',
         },
       },
       admin: {
@@ -200,6 +203,8 @@ const resources = {
         create: 'Create',
         displayName: 'Display name',
         placeholder: 'For example, Yuna',
+        password: 'Password',
+        passwordPlaceholder: 'At least 8 characters',
         wakeHint: 'The free cloud service is waking up. The first connection may take a moment.',
         submitting: 'Working',
         submitCreate: 'Create account',
@@ -209,6 +214,7 @@ const resources = {
           loginNotFound: 'No account was found for this name.',
           loginFailed: 'Sign in failed. Confirm the Go backend is running.',
           displayNameRequired: 'Enter a display name.',
+          passwordInvalid: 'Password must be 8 to 72 characters.',
         },
       },
       admin: {
