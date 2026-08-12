@@ -30,7 +30,7 @@ Authorization: Bearer <session-token>
 
 後端只信任 Session 綁定的身份；舊 client 即使傳入 `user_id`，也會被忽略。
 
-既有、尚未設定密碼的帳號不可公開搶先認領。管理員需先設定 `ADMIN_TOKEN`，再呼叫 `POST /admin/users/set-password` 設定初始密碼；聊天資料與 user id 都會保留。
+既有、尚未設定密碼的帳號不可公開搶先認領。管理員需先經 `/admin/setup` 建立管理員帳號，再透過 `/admin/login` 取得管理員權杖並呼叫 `POST /admin/users/set-password` 設定初始密碼；聊天資料與 user id 都會保留。
 
 ## Common Types
 
@@ -117,7 +117,7 @@ Register 與 login 都回傳：
 
 ```http
 POST /admin/users/set-password
-X-Admin-Token: <admin-token>
+X-Admin-Token: <admin-session-token>
 Content-Type: application/json
 ```
 
@@ -125,7 +125,56 @@ Content-Type: application/json
 {"user_id":"existing-user-id","password":"initial-password"}
 ```
 
-此端點在 `ADMIN_TOKEN` 未設定時會停用。設定後，使用者即可從一般 login 登入。
+此端點需要管理員權杖（由 `POST /admin/login` 取得，存於 MongoDB `admins` 集合）。設定後，使用者即可從一般 login 登入。
+
+### Create The First Admin Account (Bootstrap)
+
+`ADMIN_TOKEN` 環境變數只用於建立第一個管理員；之後 `/admin/*` 依靠存於資料庫的管理員權杖。
+
+```http
+POST /admin/setup
+X-Admin-Token: <ADMIN_TOKEN-env-value>
+Content-Type: application/json
+```
+
+```json
+{"username":"admin","password":"initial-admin-password"}
+```
+
+Response: `201 Created`。此端點在 `ADMIN_TOKEN` 未設定時回 503。
+
+### Admin Sign In
+
+以資料庫中的管理員帳號 + 密碼登入，簽發新權杖並存回 `admins` 文件。
+
+```http
+POST /admin/login
+Content-Type: application/json
+```
+
+```json
+{"username":"admin","password":"initial-admin-password"}
+```
+
+Response:
+
+```json
+{
+  "token": "signed-in-admin-token",
+  "admin": {"username": "admin"}
+}
+```
+
+後續所有 `/admin/*` 請求帶 `X-Admin-Token: <signed-in-admin-token>`（或 `Authorization: Bearer <token>`）。
+
+### Admin Sign Out
+
+```http
+POST /admin/logout
+X-Admin-Token: <admin-session-token>
+```
+
+Response: `204 No Content`。儲存的管理員權杖會被移除。
 
 ### List Users
 

@@ -159,6 +159,24 @@ export const fetchAdminStats = (token?: string) =>
     headers: adminHeaders(token),
   })
 
+export type AdminLoginResponse = {
+  token: string
+  admin: { username: string }
+}
+
+export const loginAdmin = (username: string, password: string) =>
+  requestJson<AdminLoginResponse>(`${getAdminApiUrl()}/admin/login`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ username, password }),
+  })
+
+export const logoutAdmin = (token: string) =>
+  requestOk(`${getAdminApiUrl()}/admin/logout`, {
+    method: 'POST',
+    headers: adminHeaders(token),
+  })
+
 export const fetchAdminUsers = (payload: { token?: string; q?: string; online?: boolean; limit?: number }) => {
   const url = new URL(`${getAdminApiUrl()}/admin/users`)
   if (payload.limit) url.searchParams.set('limit', String(payload.limit))

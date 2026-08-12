@@ -6,30 +6,29 @@ import (
 	"testing"
 )
 
-func TestAdminTokenMatchesHeader(t *testing.T) {
+func TestAdminTokenFromRequestHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
 	req.Header.Set("X-Admin-Token", "secret")
 
-	if !adminTokenMatches(req, "secret") {
-		t.Fatal("expected X-Admin-Token to match")
+	if got := adminTokenFromRequest(req); got != "secret" {
+		t.Fatalf("token = %q, want secret", got)
 	}
 }
 
-func TestAdminTokenMatchesBearer(t *testing.T) {
+func TestAdminTokenFromRequestBearer(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 
-	if !adminTokenMatches(req, "secret") {
-		t.Fatal("expected bearer token to match")
+	if got := adminTokenFromRequest(req); got != "secret" {
+		t.Fatalf("token = %q, want secret", got)
 	}
 }
 
-func TestAdminTokenRejectsWrongToken(t *testing.T) {
+func TestAdminTokenFromRequestEmpty(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/stats", nil)
-	req.Header.Set("X-Admin-Token", "wrong")
 
-	if adminTokenMatches(req, "secret") {
-		t.Fatal("did not expect wrong token to match")
+	if got := adminTokenFromRequest(req); got != "" {
+		t.Fatalf("token = %q, want empty", got)
 	}
 }
 

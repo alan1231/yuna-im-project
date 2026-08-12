@@ -26,8 +26,26 @@ func ensureIndexes(ctx context.Context, client *mongo.Client) error {
 	if _, err := db.Collection(groupsName).Indexes().CreateMany(ctx, groupIndexes()); err != nil {
 		return err
 	}
+	if _, err := db.Collection(adminsName).Indexes().CreateMany(ctx, adminIndexes()); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func adminIndexes() []mongo.IndexModel {
+	return []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "username", Value: 1}},
+			Options: options.Index().
+				SetName("username_unique").
+				SetUnique(true),
+		},
+		{
+			Keys:    bson.D{{Key: "token", Value: 1}},
+			Options: options.Index().SetName("token"),
+		},
+	}
 }
 
 func groupIndexes() []mongo.IndexModel {

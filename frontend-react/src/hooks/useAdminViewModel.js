@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { API_URL } from '../config/api'
 
 const ADMIN_TOKEN_KEY = 'yuna-im-admin-token'
+const ADMIN_USERNAME_KEY = 'yuna-im-admin-username'
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -25,8 +26,15 @@ export const useAdminViewModel = () => {
   const [users, setUsers] = useState([])
   const [query, setQuery] = useState('')
   const [onlineOnly, setOnlineOnly] = useState(false)
-  const [tokenInput, setTokenInput] = useState(window.localStorage.getItem(ADMIN_TOKEN_KEY) || '')
-  const [adminToken, setAdminToken] = useState(tokenInput)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [adminUsername, setAdminUsername] = useState(
+    window.localStorage.getItem(ADMIN_USERNAME_KEY) || '',
+  )
+  const [adminToken, setAdminToken] = useState(
+    window.localStorage.getItem(ADMIN_TOKEN_KEY) || '',
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -57,6 +65,8 @@ export const useAdminViewModel = () => {
   )
 
   const refresh = useCallback(async () => {
+    if (!adminToken) return
+
     setIsLoading(true)
     setError('')
 
@@ -86,18 +96,71 @@ export const useAdminViewModel = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [fetchJSON, onlineOnly, query, t])
+  }, [adminToken, fetchJSON, onlineOnly, query, t])
 
-  const saveToken = (event) => {
+  const submitLogin = async (event) => {
     event.preventDefault()
-    const nextToken = tokenInput.trim()
-    setAdminToken(nextToken)
+    const name = username.trim()
+    if (!name || password.length < 8 || isLoggingIn) return
 
-    if (nextToken) {
-      window.localStorage.setItem(ADMIN_TOKEN_KEY, nextToken)
-    } else {
-      window.localStorage.removeItem(ADMIN_TOKEN_KEY)
+    setIsLoggingIn(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/admin/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: name, password }),
+      })
+      if (response.status === 401) {
+        throw new Error('unauthorized')
+      }
+      if (!response.ok) {
+        throw new Error('admin login failed')
+      }
+
+      const result = await response.json()
+      setAdminToken(result.token)
+      setAdminUsername(result.admin.username)
+      setPassword('')
+      window.localStorage.setItem(ADMIN_TOKEN_KEY, result.token)
+      window.localStorage.setItem(ADMIN_USERNAME_KEY, result.admin.username)
+      setUsername(result.admin.username)
+      await refresh()
+    } catch (requestError) {
+      console.error('Admin sign in failed:', requestError)
+      setError(
+        requestError.message === 'unauthorized'
+          ? t('admin.errors.unauthorized')
+          : t('admin.errors.loginFailed'),
+      )
+    } finally {
+      setIsLoggingIn(false)
     }
+  }
+
+  const signOut = async () => {
+    if (adminToken) {
+      try {
+        await fetch(`${API_URL}/admin/logout`, {
+          method: 'POST',
+          headers: requestHeaders,
+        })
+      } catch (requestError) {
+        console.warn('Server admin logout failed:', requestError)
+      }
+    }
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY)
+    window.localStorage.removeItem(ADMIN_USERNAME_KEY)
+    setAdminToken('')
+    setAdminUsername('')
+    setUsername('')
+    setPassword('')
+    setStats(null)
+    setUsers([])
+    setError('')
   }
 
   const updateQuery = (value) => {
@@ -109,21 +172,29 @@ export const useAdminViewModel = () => {
   }
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    if (adminToken) {
+      refresh()
+    }
+  }, [refresh, adminToken])
 
   return {
     stats,
     users,
     query,
     onlineOnly,
-    tokenInput,
-    setTokenInput,
+    username,
+    password,
+    isLoggingIn,
+    adminUsername,
+    adminToken,
     isLoading,
     error,
     formatDateTime,
     refresh,
-    saveToken,
+    setUsername,
+    setPassword,
+    submitLogin,
+    signOut,
     updateQuery,
     toggleOnlineOnly,
   }

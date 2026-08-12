@@ -26,6 +26,7 @@ import (
 const (
 	collectionName      = "messages"
 	usersName           = "users"
+	adminsName          = "admins"
 	friendsName         = "friends"
 	friendRequestsName  = "friend_requests"
 	groupsName          = "groups"

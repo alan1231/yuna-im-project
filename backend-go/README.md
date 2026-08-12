@@ -18,16 +18,25 @@ MongoDB stores durable chat data and bcrypt password hashes. Redis stores presen
 
 User APIs require `Authorization: Bearer <session-token>`. Accounts use `POST /auth/register` and `POST /auth/login`; WebSocket clients obtain a 60-second one-time ticket from `POST /auth/ws-ticket` before connecting.
 
-Legacy accounts without passwords must be migrated by an administrator through `POST /admin/users/set-password`; this endpoint is disabled unless `ADMIN_TOKEN` is configured.
-
-When `ADMIN_TOKEN` is set, admin APIs require either `X-Admin-Token: <token>` or `Authorization: Bearer <token>`.
+Legacy accounts without passwords must be migrated by an administrator through `POST /admin/users/set-password`; this endpoint requires an admin session token.
 
 ## Admin APIs
 
+Admins authenticate with username + password stored in the MongoDB `admins` collection:
+
+- `POST /admin/setup` — create the first admin account, gated by the `ADMIN_TOKEN` env value (`201` on success).
+- `POST /admin/login` — sign in with admin username + password, returns a fresh token stored in the `admins` document.
+- `POST /admin/logout` — removes the stored admin token (`204`).
+
+After signing in, every admin call sends the returned value via `X-Admin-Token` or `Authorization: Bearer`:
+
 ```text
+POST /admin/users/set-password
 GET /admin/stats
 GET /admin/users?limit=100&q=yuna&online=true
 ```
+
+The `ADMIN_TOKEN` env value is only needed for the one-time `/admin/setup` bootstrap, not for daily use.
 
 ## Development
 
