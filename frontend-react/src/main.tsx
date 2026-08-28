@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './i18n'
 import './style.css'
+import './neon-ghost.css'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 

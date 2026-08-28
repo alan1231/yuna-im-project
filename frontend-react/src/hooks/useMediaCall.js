@@ -1,7 +1,17 @@
 import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const CALL_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
+const CALL_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  ...(import.meta.env.VITE_TURN_URL
+    ? [{
+        urls: import.meta.env.VITE_TURN_URL,
+        username: import.meta.env.VITE_TURN_USERNAME,
+        credential: import.meta.env.VITE_TURN_CREDENTIAL,
+      }]
+    : []),
+]
+const CALL_TIMEOUT_MS = 30_000
 
 const createInitialCallState = () => ({
   status: 'idle',
@@ -19,6 +29,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
   const localStreamRef = useRef(null)
   const pendingOfferRef = useRef(null)
   const ringtoneRef = useRef(null)
+  const callTimeoutRef = useRef(null)
 
   const signalType = useCallback((suffix) => `${media}_${suffix}`, [media])
 
@@ -64,6 +75,12 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     ringtone.gain?.disconnect()
     ringtone.audioContext?.close().catch(() => {})
     ringtoneRef.current = null
+  }, [])
+
+  const clearCallTimeout = useCallback(() => {
+    if (!callTimeoutRef.current) return
+    window.clearTimeout(callTimeoutRef.current)
+    callTimeoutRef.current = null
   }, [])
 
   const startRingtone = useCallback(() => {
@@ -116,6 +133,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
   }, [stopRingtone])
 
   const cleanup = useCallback(() => {
+    clearCallTimeout()
     stopRingtone()
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
@@ -128,7 +146,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     if (localRef?.current) {
       localRef.current.srcObject = null
     }
-  }, [localRef, remoteRef, stopRingtone])
+  }, [clearCallTimeout, localRef, remoteRef, stopRingtone])
 
   const createPeerConnection = useCallback(
     (room) => {
@@ -206,8 +224,9 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     if (!peer || !payload.answer) return
 
     await peer.setRemoteDescription(new RTCSessionDescription(payload.answer))
+    clearCallTimeout()
     setCall((current) => ({ ...current, status: 'connected' }))
-  }, [])
+  }, [clearCallTimeout])
 
   const handleIce = useCallback(async (payload) => {
     const peer = peerConnectionRef.current
@@ -246,6 +265,11 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
         isMuted: false,
         isCameraOn: media === 'video',
       })
+      callTimeoutRef.current = window.setTimeout(() => {
+        sendSignal(signalType('end'), room)
+        cleanup()
+        setCall(createInitialCallState())
+      }, CALL_TIMEOUT_MS)
     } catch (error) {
       console.error('Start call failed:', error)
       cleanup()

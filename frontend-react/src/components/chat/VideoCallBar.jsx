@@ -46,6 +46,27 @@ export default function VideoCallBar({
     )
   }
 
+  if (videoCall.status === 'calling') {
+    return (
+      <div className="outgoing-call-overlay">
+        <div className="outgoing-call-content">
+          <div className="outgoing-call-avatar-wrap">
+            <span className="outgoing-call-ring" />
+            <img className="incoming-call-avatar" src="/neon-ghost-logo.png" alt="" />
+          </div>
+          <div className="outgoing-call-caller">
+            <h1>{videoCall.peerName}</h1>
+            <p>{statusText}</p>
+          </div>
+          <button type="button" className="outgoing-call-cancel" onClick={onEnd}>
+            <span aria-hidden="true">×</span>
+            {t('chat.videoEnd')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`video-call-overlay ${isVisible ? 'is-active' : ''}`}>
       <div className="video-call-panel">

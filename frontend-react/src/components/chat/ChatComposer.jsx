@@ -223,12 +223,18 @@ export default function ChatComposer({
         {fileError ? <p className="composer-error">{fileError}</p> : null}
         {!fileError && isProcessingFile ? <p className="composer-status">{t('chat.processingFile')}</p> : null}
 
-        <input
+        <textarea
           value={value}
-          type="text"
+          rows="1"
           placeholder={placeholder || t('chat.inputPlaceholder')}
           autoComplete="off"
           onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              if (canSend && !isProcessingFile) event.currentTarget.form?.requestSubmit()
+            }
+          }}
         />
       </div>
 
