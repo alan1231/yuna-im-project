@@ -1,6 +1,6 @@
-# Yuna IM Project
+# Neon Ghost Project
 
-Yuna IM 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 組成。
+Neon Ghost 是一個本機/demo 即時聊天專案，使用 React、Go、MongoDB、Redis 組成。
 
 ## 快速啟動
 

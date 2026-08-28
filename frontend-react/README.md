@@ -1,6 +1,6 @@
 # React + Vite
 
-Yuna IM web frontend built with React and Vite.
+Neon Ghost web frontend built with React and Vite.
 
 ## Scripts
 

@@ -21,6 +21,33 @@ export default function VoiceCallBar({
         ? t('chat.voiceCalling', { name: voiceCall.peerName })
         : t('chat.voiceConnected', { name: voiceCall.peerName })
 
+  if (voiceCall.status === 'incoming') {
+    return (
+      <div className="incoming-call-overlay">
+        <div className="incoming-call-card">
+          <div className="incoming-call-heading">
+            <h2>{t('chat.voiceCall')}</h2>
+            <span>Encrypted connection</span>
+          </div>
+          <img className="incoming-call-avatar" src="/neon-ghost-logo.png" alt="" />
+          <div className="incoming-call-caller">
+            <h3>{voiceCall.peerName}</h3>
+            <p>{statusText}</p>
+          </div>
+          <audio ref={remoteAudioRef} autoPlay playsInline />
+          <div className="incoming-call-actions">
+            <button type="button" className="voice-end-button" onClick={onReject}>
+              {t('chat.voiceReject')}
+            </button>
+            <button type="button" className="voice-accept-button" onClick={onAccept}>
+              {t('chat.voiceAccept')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="voice-call-bar">
       <audio ref={remoteAudioRef} autoPlay playsInline />
@@ -29,17 +56,7 @@ export default function VoiceCallBar({
         <strong>{statusText}</strong>
       </div>
       <div className="voice-call-actions">
-        {voiceCall.status === 'incoming' ? (
-          <>
-            <button type="button" className="voice-accept-button" onClick={onAccept}>
-              {t('chat.voiceAccept')}
-            </button>
-            <button type="button" className="voice-end-button" onClick={onReject}>
-              {t('chat.voiceReject')}
-            </button>
-          </>
-        ) : (
-          <>
+        <>
             {voiceCall.status === 'connected' ? (
               <button type="button" className="voice-secondary-button" onClick={onToggleMute}>
                 {voiceCall.isMuted ? t('chat.voiceUnmute') : t('chat.voiceMute')}
@@ -48,8 +65,7 @@ export default function VoiceCallBar({
             <button type="button" className="voice-end-button" onClick={onEnd}>
               {t('chat.voiceEnd')}
             </button>
-          </>
-        )}
+        </>
       </div>
     </div>
   )

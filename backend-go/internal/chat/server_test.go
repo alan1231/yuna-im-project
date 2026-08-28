@@ -37,6 +37,12 @@ func TestConversationIncludesUser(t *testing.T) {
 	}
 }
 
+func TestForwardVoiceSignalConversationIDCanBeDerived(t *testing.T) {
+	if got := conversationIDFor("mobile-user", "desktop-user"); got != "dm:desktop-user:mobile-user" {
+		t.Fatalf("conversationIDFor() = %q, want derived direct-message id", got)
+	}
+}
+
 func TestIsOriginAllowed(t *testing.T) {
 	previous := allowedOrigins
 	t.Cleanup(func() {

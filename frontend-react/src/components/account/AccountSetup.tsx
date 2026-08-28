@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import NetworkQrCode from '../NetworkQrCode.jsx'
+import LanguageSwitcher from '../LanguageSwitcher.jsx'
 
 type AccountMode = 'login' | 'create'
 
@@ -63,11 +64,17 @@ export default function AccountSetup({
   return (
     <main className="account-screen">
       <section className="account-entry" aria-label={t('account.brandName')}>
-        <div className="account-brand">
+        <div className="account-control-row">
+          <LanguageSwitcher />
           <NetworkQrCode />
-          <p className="eyebrow">{t('account.eyebrow')}</p>
+        </div>
+        <div className="account-brand">
+          <div className="account-logo" aria-hidden="true">
+            <img src="/neon-ghost-logo.png" alt="" />
+          </div>
+          <p className="eyebrow">// {t('account.eyebrow')}</p>
           <h1>{t('account.brandName')}</h1>
-          <p>{t('account.brandCopy')}</p>
+          <p className="account-brand-copy">{t('account.brandCopy')}</p>
           <div className="account-feature-list" aria-label={t('account.featuresLabel')}>
             <span>{t('account.features.chat')}</span>
             <span>{t('account.features.market')}</span>
@@ -77,7 +84,7 @@ export default function AccountSetup({
 
         <form className="account-panel" onSubmit={submit}>
           <div className="account-panel-heading">
-            <span>{t('account.panelKicker')}</span>
+            <span className="account-panel-kicker">{t('account.panelKicker')}</span>
             <h2>{t(`account.title.${mode}`)}</h2>
             <p className="account-copy">{t(`account.copy.${mode}`)}</p>
           </div>
@@ -100,7 +107,7 @@ export default function AccountSetup({
           </div>
 
           <label className="account-field">
-            <span>{t('account.displayName')}</span>
+            <span><b aria-hidden="true">◈</b>{t('account.displayName')}</span>
             <input
               {...register('displayName')}
               type="text"
@@ -112,7 +119,7 @@ export default function AccountSetup({
           </label>
 
           <label className="account-field">
-            <span>{t('account.password')}</span>
+            <span><b aria-hidden="true">▣</b>{t('account.password')}</span>
             <input
               {...register('password')}
               type="password"

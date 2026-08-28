@@ -44,7 +44,7 @@ export default function NetworkQrCode() {
             ×
           </button>
           <strong>手機掃描開啟</strong>
-          <img src={qrCode.image} alt="QR code for opening Yuna IM on a phone" />
+          <img src={qrCode.image} alt="QR code for opening Neon Ghost on a phone" />
           <small>{qrCode.target}</small>
         </aside>
       </div>

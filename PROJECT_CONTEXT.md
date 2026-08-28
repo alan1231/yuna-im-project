@@ -2,7 +2,7 @@
 
 ## Goal
 
-Yuna IM is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a built-in Go stock bot.
+Neon Ghost is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a built-in Go stock bot.
 
 The current priority is a stable local/demo-grade IM experience with clear paths toward production hardening.
 

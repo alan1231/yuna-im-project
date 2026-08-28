@@ -20,6 +20,32 @@ export default function VideoCallBar({
         ? t('chat.videoCalling', { name: videoCall.peerName })
         : t('chat.videoConnected', { name: videoCall.peerName })
 
+  if (videoCall.status === 'incoming') {
+    return (
+      <div className="video-call-overlay is-active">
+        <div className="incoming-call-card">
+          <div className="incoming-call-heading">
+            <h2>{t('chat.videoCall')}</h2>
+            <span>Encrypted connection</span>
+          </div>
+          <img className="incoming-call-avatar" src="/neon-ghost-logo.png" alt="" />
+          <div className="incoming-call-caller">
+            <h3>{videoCall.peerName}</h3>
+            <p>{statusText}</p>
+          </div>
+          <div className="incoming-call-actions">
+            <button type="button" className="voice-end-button" onClick={onReject}>
+              {t('chat.videoReject')}
+            </button>
+            <button type="button" className="voice-accept-button" onClick={onAccept}>
+              {t('chat.videoAccept')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`video-call-overlay ${isVisible ? 'is-active' : ''}`}>
       <div className="video-call-panel">
@@ -32,17 +58,7 @@ export default function VideoCallBar({
           <strong>{statusText}</strong>
         </div>
         <div className="video-call-actions">
-          {videoCall.status === 'incoming' ? (
-            <>
-              <button type="button" className="voice-accept-button" onClick={onAccept}>
-                {t('chat.videoAccept')}
-              </button>
-              <button type="button" className="voice-end-button" onClick={onReject}>
-                {t('chat.videoReject')}
-              </button>
-            </>
-          ) : (
-            <>
+          <>
               {videoCall.status === 'connected' ? (
                 <>
                   <button type="button" className="voice-secondary-button" onClick={onToggleMute}>
@@ -56,8 +72,7 @@ export default function VideoCallBar({
               <button type="button" className="voice-end-button" onClick={onEnd}>
                 {t('chat.videoEnd')}
               </button>
-            </>
-          )}
+          </>
         </div>
       </div>
     </div>

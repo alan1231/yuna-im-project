@@ -6,11 +6,12 @@ const resources = {
     translation: {
       account: {
         eyebrow: 'Account',
-        brandName: 'Yuna IM',
+        brandName: 'Neon Ghost',
         brandCopy: '把聊天與好友功能放在同一個乾淨入口。',
         featuresLabel: '產品重點',
         features: {
           chat: '即時聊天',
+          market: '好友交流',
           realtime: '在線狀態',
         },
         panelKicker: '開始使用',
@@ -43,7 +44,7 @@ const resources = {
         },
       },
       admin: {
-        consoleTitle: 'Yuna IM 後台',
+        consoleTitle: 'Neon Ghost 後台',
         loginEyebrow: '管理員登入',
         loginTitle: '登入管理控制台',
         loginHint: '使用管理員帳號和密碼登入（由 /admin/setup 建立的第一個管理員）。',
@@ -207,11 +208,12 @@ const resources = {
     translation: {
       account: {
         eyebrow: 'Account',
-        brandName: 'Yuna IM',
+        brandName: 'Neon Ghost',
         brandCopy: 'A clean entry for chat and friends.',
         featuresLabel: 'Product highlights',
         features: {
           chat: 'Real-time chat',
+          market: 'Friend spaces',
           realtime: 'Presence',
         },
         panelKicker: 'Get started',
@@ -244,7 +246,7 @@ const resources = {
         },
       },
       admin: {
-        consoleTitle: 'Yuna IM Admin',
+        consoleTitle: 'Neon Ghost Admin',
         loginEyebrow: 'Admin sign in',
         loginTitle: 'Sign in to the admin console',
         loginHint: 'Use the admin username and password (the first admin is created via /admin/setup).',

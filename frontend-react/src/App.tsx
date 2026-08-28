@@ -5,7 +5,6 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AccountSetup from './components/account/AccountSetup'
 import AdminConsole from './components/admin/AdminConsole.jsx'
 import ChatWindow from './components/chat/ChatWindow'
-import LanguageSwitcher from './components/LanguageSwitcher.jsx'
 import {
   fetchCurrentUser,
   loginAccount,
@@ -19,7 +18,6 @@ import type { CurrentUser } from './types/chat'
 export default function App() {
   return (
     <div className="app-shell">
-      <LanguageSwitcher />
       <Routes>
         <Route path="/" element={<ChatRoute />} />
         <Route path="/admin" element={<AdminConsole />} />

@@ -300,7 +300,14 @@ func forwardVoiceSignal(ctx context.Context, client *mongo.Client, redisClient *
 	recipientID = strings.TrimSpace(recipientID)
 	conversationID = strings.TrimSpace(conversationID)
 
-	if recipientID == "" || conversationID == "" || strings.HasPrefix(conversationID, "group:") {
+	if recipientID == "" {
+		log.Printf("略過語音 signaling: sender=%s recipient=%s conversation=%s", senderID, recipientID, conversationID)
+		return
+	}
+	if conversationID == "" {
+		conversationID = conversationIDFor(senderID, recipientID)
+	}
+	if strings.HasPrefix(conversationID, "group:") {
 		log.Printf("略過語音 signaling: sender=%s recipient=%s conversation=%s", senderID, recipientID, conversationID)
 		return
 	}

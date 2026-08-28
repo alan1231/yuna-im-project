@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
+import LanguageSwitcher from '../LanguageSwitcher.jsx'
 
 const groupFormSchema = z.object({
   groupName: z.string().trim().min(1).max(32),
@@ -446,6 +447,7 @@ export default function RoomList({
           <p className="eyebrow">Messages</p>
           <h2>{t('chat.roomsTitle')}</h2>
         </div>
+        <LanguageSwitcher />
       </div>
 
       <div className="sidebar-search">
