@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-export default function MessageBubble({ message, showSenderName = false }) {
+export default function MessageBubble({ message, showSenderName = false, onGameResponse }) {
   const { i18n, t } = useTranslation()
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false)
   const imagePreviewModal = useRef(null)
@@ -10,6 +10,7 @@ export default function MessageBubble({ message, showSenderName = false }) {
   const isPending = Boolean(message.isPending)
   const hasText = Boolean(message.text)
   const hasAttachment = Boolean(message.attachmentUrl)
+  const isBlackjackInvite = message.gameType === 'blackjack' && message.gameAction === 'invite'
   const isImageAttachment = message.attachmentType?.startsWith('image/')
   const attachmentLabel = message.attachmentName || t('chat.file')
   const sentTime = (() => {
@@ -75,7 +76,24 @@ export default function MessageBubble({ message, showSenderName = false }) {
         {!isPending && showSenderName && !isSelf && message.sender ? (
           <span className="message-sender-name">{message.sender}</span>
         ) : null}
-        {!isPending && hasText ? <p>{message.text}</p> : null}
+        {!isPending && isBlackjackInvite ? (
+          <div className="game-invite-card">
+            <span className="game-invite-icon" aria-hidden="true">♠</span>
+            <strong>{t('chat.blackjackTitle')}</strong>
+            <p>{t('chat.blackjackInvite')}</p>
+            {!isSelf && message.gameId ? (
+              <div className="game-invite-actions">
+                <button type="button" onClick={() => onGameResponse?.(message.gameId, true)}>
+                  {t('chat.gameAccept')}
+                </button>
+                <button type="button" onClick={() => onGameResponse?.(message.gameId, false)}>
+                  {t('chat.gameReject')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!isPending && !isBlackjackInvite && hasText ? <p>{message.text}</p> : null}
         {!isPending ? (
           <footer className="message-footer">
             {sentTime ? <time>{sentTime}</time> : null}

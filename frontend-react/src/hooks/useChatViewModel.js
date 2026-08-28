@@ -87,6 +87,9 @@ const normalizeIncomingMessage = (data, currentUserId) => {
     attachmentSize: data.attachment_size || data.attachmentSize || data.image_size || data.imageSize || 0,
     sentAt: data.sentAt || data.time || getCurrentTime(),
     readAt,
+    gameType: data.game_type || data.gameType || '',
+    gameId: data.game_id || data.gameId || '',
+    gameAction: data.game_action || data.gameAction || '',
   }
 }
 const createFriendRoom = (currentUserId, friend, t) => ({
@@ -151,6 +154,7 @@ export const useChatViewModel = (currentUser) => {
   const [messagesByConversation, setMessagesByConversation] = useState(
     Object.fromEntries(initialRooms.map((room) => [room.conversationId, []])),
   )
+  const [gamesByConversation, setGamesByConversation] = useState({})
   const [userInput, setUserInput] = useState('')
   const [fileAttachment, setFileAttachment] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -524,6 +528,19 @@ export const useChatViewModel = (currentUser) => {
         break
       case 'read_receipt':
         applyReadReceipt(data.payload)
+        break
+      case 'game_start':
+        setGamesByConversation((games) => ({
+          ...games,
+          [data.payload.conversation_id]: data.payload,
+        }))
+        break
+      case 'game_state':
+      case 'game_result':
+        setGamesByConversation((games) => ({
+          ...games,
+          [data.payload.conversation_id]: data.payload,
+        }))
         break
       case 'voice_offer':
       case 'voice_answer':
@@ -1017,6 +1034,38 @@ export const useChatViewModel = (currentUser) => {
     setFileAttachment(null)
   }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, t, userInput])
 
+  const sendGameMessage = useCallback((gameAction, gameId = '') => {
+    const socket = socketRef.current
+    const room = getActiveRoom()
+    if (!room || room.isGroup || !socket || socket.readyState !== WebSocket.OPEN) {
+      setConnectionError(t('chat.errors.reconnecting'))
+      reconnect()
+      return
+    }
+
+    socket.send(
+      JSON.stringify({
+        recipient_id: room.recipientId,
+        conversation_id: room.conversationId,
+        text: gameAction === 'invite' ? t('chat.gameInviteText') : t(`chat.game${gameAction === 'accept' ? 'Accepted' : 'Rejected'}Text`),
+        game_type: 'blackjack',
+        game_action: gameAction,
+        game_id: gameId,
+      }),
+    )
+  }, [getActiveRoom, reconnect, t])
+
+  const sendGameInvite = useCallback(() => sendGameMessage('invite'), [sendGameMessage])
+  const respondToGameInvite = useCallback(
+    (gameId, accepted) => sendGameMessage(accepted ? 'accept' : 'reject', gameId),
+    [sendGameMessage],
+  )
+  const sendGameAction = useCallback((gameId, action) => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    socket.send(JSON.stringify({ type: 'game_action', game_id: gameId, game_action: action }))
+  }, [])
+
   useEffect(() => {
     let isActive = true
 
@@ -1052,6 +1101,7 @@ export const useChatViewModel = (currentUser) => {
     activeRoom,
     activeRoomId,
     messages,
+    game: gamesByConversation[activeRoom?.conversationId] || null,
     userInput,
     setUserInput,
     fileAttachment,
@@ -1077,6 +1127,9 @@ export const useChatViewModel = (currentUser) => {
     refreshUsers: loadUsers,
     wakeBackend,
     sendMessage,
+    sendGameInvite,
+    respondToGameInvite,
+    sendGameAction,
     startVoiceCall: voiceCall.startCall,
     acceptVoiceCall: voiceCall.acceptCall,
     rejectVoiceCall: voiceCall.rejectCall,

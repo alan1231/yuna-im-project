@@ -46,6 +46,9 @@ export type ChatMessage = {
   sentAt: string
   readAt?: string
   isPending?: boolean
+  gameType?: string
+  gameId?: string
+  gameAction?: string
 }
 
 export type VoiceCallState = {

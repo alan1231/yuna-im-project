@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"slices"
@@ -35,6 +36,8 @@ const (
 
 var databaseName = defaultDatabaseName
 var allowedOrigins = defaultAllowedOrigins
+
+const blackjackIdleTimeout = 5 * time.Minute
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -84,6 +87,21 @@ type changeStreamHub struct {
 	mu      sync.Mutex
 	clients map[*wsClient]struct{}
 	mongo   *mongo.Client
+	games   map[string]blackjackSession
+}
+
+type blackjackSession struct {
+	GameID         string              `json:"game_id"`
+	ConversationID string              `json:"conversation_id"`
+	PlayerIDs      []string            `json:"player_ids"`
+	Status         string              `json:"status"`
+	CreatedAt      time.Time           `json:"created_at"`
+	Deck           []string            `json:"-"`
+	Hands          map[string][]string `json:"-"`
+	Stood          map[string]bool     `json:"-"`
+	CurrentTurn    string              `json:"current_turn"`
+	Winner         string              `json:"winner,omitempty"`
+	LastActionAt   time.Time           `json:"-"`
 }
 
 type voiceSignalEnvelope struct {
@@ -95,7 +113,178 @@ func newChangeStreamHub(client *mongo.Client) *changeStreamHub {
 	return &changeStreamHub{
 		clients: map[*wsClient]struct{}{},
 		mongo:   client,
+		games:   map[string]blackjackSession{},
 	}
+}
+
+func (hub *changeStreamHub) startBlackjackGame(gameID, conversationID, firstPlayerID, secondPlayerID string) blackjackSession {
+	deck := blackjackDeck()
+	shuffleBlackjackDeck(deck)
+	hands := map[string][]string{firstPlayerID: {}, secondPlayerID: {}}
+	for range 2 {
+		hands[firstPlayerID] = append(hands[firstPlayerID], deck[0])
+		deck = deck[1:]
+		hands[secondPlayerID] = append(hands[secondPlayerID], deck[0])
+		deck = deck[1:]
+	}
+	session := blackjackSession{
+		GameID:         gameID,
+		ConversationID: conversationID,
+		PlayerIDs:      []string{firstPlayerID, secondPlayerID},
+		Status:         "playing",
+		CreatedAt:      time.Now(),
+		Deck:           deck,
+		Hands:          hands,
+		Stood:          map[string]bool{firstPlayerID: false, secondPlayerID: false},
+		CurrentTurn:    firstPlayerID,
+		LastActionAt:   time.Now(),
+	}
+	hub.mu.Lock()
+	hub.games[gameID] = session
+	hub.mu.Unlock()
+	return session
+}
+
+func blackjackDeck() []string {
+	deck := make([]string, 0, 52)
+	for _, suit := range []string{"club", "diamond", "heart", "spade"} {
+		for rank := 1; rank <= 13; rank++ {
+			deck = append(deck, fmt.Sprintf("%s%02d", suit, rank))
+		}
+	}
+	return deck
+}
+
+func shuffleBlackjackDeck(deck []string) {
+	rand.New(rand.NewSource(time.Now().UnixNano())).Shuffle(len(deck), func(i, j int) {
+		deck[i], deck[j] = deck[j], deck[i]
+	})
+}
+
+func blackjackScore(cards []string) int {
+	score, aces := 0, 0
+	for _, card := range cards {
+		rank := 0
+		fmt.Sscanf(card[len(card)-2:], "%d", &rank)
+		if rank == 1 {
+			score += 11
+			aces++
+		} else if rank > 10 {
+			score += 10
+		} else {
+			score += rank
+		}
+	}
+	for score > 21 && aces > 0 {
+		score -= 10
+		aces--
+	}
+	return score
+}
+
+func (hub *changeStreamHub) blackjackState(session blackjackSession) bson.M {
+	scores := bson.M{}
+	for playerID, hand := range session.Hands {
+		scores[playerID] = blackjackScore(hand)
+	}
+	return bson.M{
+		"game_id": session.GameID, "game_type": "blackjack", "conversation_id": session.ConversationID,
+		"player_ids": session.PlayerIDs, "hands": session.Hands, "scores": scores,
+		"status": session.Status, "current_turn": session.CurrentTurn, "winner": session.Winner,
+	}
+}
+
+func (hub *changeStreamHub) applyBlackjackAction(userID, gameID, action string) (bson.M, bool) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	session, ok := hub.games[gameID]
+	if !ok {
+		return nil, false
+	}
+	if userID != session.PlayerIDs[0] && userID != session.PlayerIDs[1] {
+		return nil, false
+	}
+	if action == "restart" {
+		if session.Status != "finished" && session.Status != "canceled" {
+			return nil, false
+		}
+		deck := blackjackDeck()
+		shuffleBlackjackDeck(deck)
+		session.Hands = map[string][]string{session.PlayerIDs[0]: {}, session.PlayerIDs[1]: {}}
+		for range 2 {
+			session.Hands[session.PlayerIDs[0]] = append(session.Hands[session.PlayerIDs[0]], deck[0])
+			deck = deck[1:]
+			session.Hands[session.PlayerIDs[1]] = append(session.Hands[session.PlayerIDs[1]], deck[0])
+			deck = deck[1:]
+		}
+		session.Deck = deck
+		session.Stood = map[string]bool{session.PlayerIDs[0]: false, session.PlayerIDs[1]: false}
+		session.Status, session.Winner, session.CurrentTurn = "playing", "", session.PlayerIDs[0]
+		session.LastActionAt = time.Now()
+		hub.games[gameID] = session
+		return hub.blackjackState(session), true
+	}
+	if action == "cancel" {
+		if session.Status != "playing" {
+			return nil, false
+		}
+		session.Status, session.Winner = "canceled", ""
+		hub.games[gameID] = session
+		return hub.blackjackState(session), true
+	}
+	if session.Status != "playing" || session.CurrentTurn != userID || len(session.Deck) == 0 {
+		return nil, false
+	}
+	session.LastActionAt = time.Now()
+	hand := session.Hands[userID]
+	switch action {
+	case "hit":
+		hand = append(hand, session.Deck[0])
+		session.Deck = session.Deck[1:]
+		session.Hands[userID] = hand
+		if blackjackScore(hand) > 21 {
+			session.Stood[userID] = true
+		}
+	case "stand":
+		session.Stood[userID] = true
+	default:
+		return nil, false
+	}
+
+	first, second := session.PlayerIDs[0], session.PlayerIDs[1]
+	if session.Stood[first] && session.Stood[second] || session.Stood[userID] && blackjackScore(hand) > 21 {
+		session.Status = "finished"
+		firstScore, secondScore := blackjackScore(session.Hands[first]), blackjackScore(session.Hands[second])
+		switch {
+		case firstScore > 21 && secondScore > 21, firstScore == secondScore:
+			session.Winner = "draw"
+		case firstScore > 21 || firstScore < secondScore && secondScore <= 21:
+			session.Winner = second
+		default:
+			session.Winner = first
+		}
+	} else if userID == first {
+		session.CurrentTurn = second
+	} else {
+		session.CurrentTurn = first
+	}
+	hub.games[gameID] = session
+	return hub.blackjackState(session), true
+}
+
+func (hub *changeStreamHub) expireBlackjackGames() []blackjackSession {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	expired := make([]blackjackSession, 0)
+	for gameID, session := range hub.games {
+		if session.Status != "playing" || time.Since(session.LastActionAt) <= blackjackIdleTimeout {
+			continue
+		}
+		session.Status = "canceled"
+		hub.games[gameID] = session
+		expired = append(expired, session)
+	}
+	return expired
 }
 
 func (hub *changeStreamHub) register(client *wsClient) {
@@ -233,6 +422,28 @@ func (hub *changeStreamHub) sendToUser(userID string, event websocketEvent) bool
 		}
 	}
 	return delivered
+}
+
+func (hub *changeStreamHub) sendActiveBlackjackGames(userID string) {
+	hub.mu.Lock()
+	states := make([]bson.M, 0)
+	for _, session := range hub.games {
+		if session.Status != "playing" && session.Status != "finished" {
+			continue
+		}
+		if userID != session.PlayerIDs[0] && userID != session.PlayerIDs[1] {
+			continue
+		}
+		states = append(states, hub.blackjackState(session))
+	}
+	hub.mu.Unlock()
+	for _, state := range states {
+		eventType := "game_state"
+		if status, _ := state["status"].(string); status == "finished" {
+			eventType = "game_result"
+		}
+		hub.sendToUser(userID, websocketEvent{Type: eventType, Payload: state})
+	}
 }
 
 func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
@@ -971,6 +1182,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	hub.register(wsClient)
 	defer hub.unregister(wsClient)
 	go writeWebSocketEvents(ctx, ws, wsClient)
+	hub.sendActiveBlackjackGames(userID)
 	if conversationID != "" {
 		markConversationRead(ctx, client, userID, conversationID)
 	}
@@ -994,6 +1206,21 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			continue
 		} else if isCallSignalType(eventType) {
 			forwardVoiceSignal(ctx, client, redisClient, userID, msg)
+			continue
+		} else if eventType == "game_action" {
+			gameID, _ := msg["game_id"].(string)
+			action, _ := msg["game_action"].(string)
+			if state, ok := hub.applyBlackjackAction(userID, strings.TrimSpace(gameID), strings.TrimSpace(action)); ok {
+				eventType := "game_state"
+				if status, _ := state["status"].(string); status == "finished" {
+					eventType = "game_result"
+				}
+				event := websocketEvent{Type: eventType, Payload: state}
+				if players, ok := state["player_ids"].([]string); ok {
+					hub.sendToUser(players[0], event)
+					hub.sendToUser(players[1], event)
+				}
+			}
 			continue
 		}
 
@@ -1025,10 +1252,37 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			msg["conversation_id"] = conversationIDFor(userID, recipientID)
 		}
 
+		if gameType, _ := msg["game_type"].(string); gameType == "blackjack" {
+			if action, _ := msg["game_action"].(string); action == "invite" {
+				if gameID, _ := msg["game_id"].(string); strings.TrimSpace(gameID) == "" {
+					msg["game_id"] = fmt.Sprintf("bj_%d", time.Now().UnixNano())
+				}
+			}
+		}
+
 		_, err := collection.InsertOne(ctx, msg)
 		if err != nil {
 			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
 			return
+		}
+
+		if gameType, _ := msg["game_type"].(string); gameType == "blackjack" {
+			if action, _ := msg["game_action"].(string); action == "accept" {
+				gameID, _ := msg["game_id"].(string)
+				if gameID != "" {
+					inviteExists, findErr := collection.CountDocuments(ctx, bson.M{
+						"game_id": gameID, "game_type": "blackjack", "game_action": "invite",
+						"sender_id": recipientID, "recipient_id": userID,
+					})
+					if findErr != nil || inviteExists == 0 {
+						continue
+					}
+					session := hub.startBlackjackGame(gameID, msg["conversation_id"].(string), recipientID, userID)
+					event := websocketEvent{Type: "game_start", Payload: hub.blackjackState(session)}
+					hub.sendToUser(userID, event)
+					hub.sendToUser(recipientID, event)
+				}
+			}
 		}
 
 		fmt.Printf("收到訊息並存入資料庫: %v\n", msg["text"])
@@ -1558,6 +1812,22 @@ func Run(cfg Config) error {
 	defer stopHub()
 	hub := newChangeStreamHub(client)
 	go hub.run(hubCtx)
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				for _, session := range hub.expireBlackjackGames() {
+					event := websocketEvent{Type: "game_result", Payload: hub.blackjackState(session)}
+					hub.sendToUser(session.PlayerIDs[0], event)
+					hub.sendToUser(session.PlayerIDs[1], event)
+				}
+			case <-hubCtx.Done():
+				return
+			}
+		}
+	}()
 	voiceSubscription := redisClient.Subscribe(hubCtx, voiceSignalsChannel)
 	if _, err := voiceSubscription.Receive(ctx); err != nil {
 		return err

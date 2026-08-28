@@ -950,11 +950,15 @@
 .message-self .message-read-status-read { color: #003731; }
 
 .composer {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
   gap: 8px;
   padding: 16px 24px;
   background: #141314;
   border-top: 2px solid #000;
 }
+.composer-main-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.composer-game-row { display: flex; justify-content: flex-start; gap: 8px; }
 
 .composer-input-stack {
   padding: 0;
@@ -1026,6 +1030,72 @@
   background: #2a2a2b;
   border-color: #000;
   box-shadow: 3px 3px 0 #000;
+}
+
+.composer-game-button { color: #71d8c8; }
+.composer-game-button:hover { color: #061418; background: #71d8c8; }
+.game-invite-card {
+  min-width: 230px;
+  padding: 14px;
+  color: #090a10;
+  background: #71d8c8;
+  border: 2px solid #000;
+  box-shadow: 4px 4px 0 #000;
+}
+.message:not(.message-self) .game-invite-card { color: #fff; background: #201f20; }
+.game-invite-icon { display: block; font-size: 28px; line-height: 1; }
+.game-invite-card strong { display: block; margin-top: 8px; font-size: 16px; }
+.game-invite-card p { margin: 5px 0 12px; font-size: 13px; }
+.game-invite-actions { display: flex; gap: 8px; }
+.game-invite-actions button {
+  padding: 7px 10px;
+  color: #061418;
+  background: #71d8c8;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.game-invite-actions button:last-child { color: #fff; background: #37363a; }
+.game-invite-actions button:active { transform: translate(2px, 2px); box-shadow: none; }
+
+.blackjack-panel {
+  margin: 0 24px 12px;
+  padding: 16px;
+  color: #071317;
+  background: #71d8c8;
+  border: 2px solid #000;
+  box-shadow: 5px 5px 0 #000;
+}
+.blackjack-panel-heading { display: flex; align-items: center; gap: 12px; }
+.blackjack-panel .eyebrow { margin: 0 0 2px; color: #17433f; }
+.blackjack-panel h2 { margin: 0; font-size: 20px; }
+.blackjack-panel p:not(.eyebrow) { margin: 12px 0 0; font-weight: 700; }
+.blackjack-suit { font-size: 34px; line-height: 1; }
+.blackjack-status {
+  margin-left: auto;
+  padding: 5px 8px;
+  color: #fff;
+  background: #201f20;
+  border: 2px solid #000;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.blackjack-hand { margin-top: 12px; }
+.blackjack-hand > span { display: block; font-size: 12px; font-weight: 900; text-transform: uppercase; }
+.blackjack-cards { display: flex; gap: 6px; margin-top: 6px; }
+.blackjack-cards img { width: 48px; height: 68px; object-fit: cover; border: 2px solid #000; box-shadow: 2px 2px 0 #000; }
+.blackjack-actions { display: flex; gap: 10px; margin-top: 14px; }
+.blackjack-actions button { padding: 8px 14px; color: #071317; background: #fff; border: 2px solid #000; box-shadow: 3px 3px 0 #000; font: inherit; font-weight: 900; cursor: pointer; }
+.blackjack-actions button:last-child { background: #201f20; color: #fff; }
+.blackjack-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.blackjack-result { margin: 0; font-size: 18px; }
+@media (max-width: 768px) {
+  .blackjack-panel { margin: 0 14px 10px; padding: 12px; }
+  .blackjack-status { font-size: 9px; }
 }
 
 /* Incoming call modal matching the supplied reference. */
@@ -1398,10 +1468,14 @@
   }
 
   .composer {
-    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
     min-width: 0;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   }
+
+  .composer-main-row { grid-template-columns: minmax(0, 1fr) 44px 44px; }
+  .composer-game-row { justify-content: flex-start; }
 
   .composer-input-stack {
     min-width: 0;

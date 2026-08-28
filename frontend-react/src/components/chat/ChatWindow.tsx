@@ -7,6 +7,7 @@ import MessageList from './MessageList.jsx'
 import RoomList from './RoomList.jsx'
 import VoiceCallBar from './VoiceCallBar.jsx'
 import VideoCallBar from './VideoCallBar.jsx'
+import BlackjackPanel from './BlackjackPanel.jsx'
 import { useChatUiStore } from '../../stores/chatUiStore'
 import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
 
@@ -26,6 +27,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     activeRoom,
     activeRoomId,
     messages,
+    game,
     userInput,
     setUserInput,
     fileAttachment,
@@ -51,6 +53,9 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     refreshUsers,
     wakeBackend,
     sendMessage,
+    sendGameInvite,
+    respondToGameInvite,
+    sendGameAction,
     startVoiceCall,
     acceptVoiceCall,
     rejectVoiceCall,
@@ -169,19 +174,24 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
           <MessageList
             messages={messages}
             activeRoom={typedActiveRoom}
+            onGameResponse={respondToGameInvite}
           />
+
+          <BlackjackPanel game={game} currentUserId={currentUser.id} onAction={sendGameAction} />
 
           <ChatComposer
             value={userInput}
             onChange={setUserInput}
             fileAttachment={fileAttachment}
             allowAttachments
+            allowGames={!typedActiveRoom.isGroup}
             canSend={canSend}
             placeholder={t('chat.messagePlaceholder', { name: typedActiveRoom.name })}
             submitLabel={t('chat.send')}
             onAttachFile={attachFile}
             onClearFile={clearFileAttachment}
             onSend={sendMessage}
+            onGameInvite={sendGameInvite}
           />
         </section>
       ) : null}

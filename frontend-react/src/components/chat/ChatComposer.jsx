@@ -45,6 +45,7 @@ export default function ChatComposer({
   onChange,
   fileAttachment = null,
   allowAttachments = true,
+  allowGames = false,
   variant = 'chat',
   canSend,
   placeholder,
@@ -52,6 +53,7 @@ export default function ChatComposer({
   onAttachFile,
   onClearFile,
   onSend,
+  onGameInvite,
 }) {
   const { t } = useTranslation()
   const fileInput = useRef(null)
@@ -194,8 +196,9 @@ export default function ChatComposer({
         handleDrop(event)
       }}
     >
-      <div className="composer-input-stack">
-        {fileAttachment ? (
+      <div className="composer-main-row">
+        <div className="composer-input-stack">
+          {fileAttachment ? (
           <div className="file-attachment-preview">
             {isImageAttachment ? (
               <img src={fileAttachment.url} alt={fileAttachment.name || t('chat.pendingImage')} />
@@ -218,50 +221,65 @@ export default function ChatComposer({
               ×
             </button>
           </div>
+          ) : null}
+
+          {fileError ? <p className="composer-error">{fileError}</p> : null}
+          {!fileError && isProcessingFile ? <p className="composer-status">{t('chat.processingFile')}</p> : null}
+
+          <textarea
+            value={value}
+            rows="1"
+            placeholder={placeholder || t('chat.inputPlaceholder')}
+            autoComplete="off"
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                if (canSend && !isProcessingFile) event.currentTarget.form?.requestSubmit()
+              }
+            }}
+          />
+        </div>
+
+        {allowAttachments ? (
+          <button
+            type="button"
+            className="composer-icon-button composer-file-button"
+            aria-label={t('chat.chooseFile')}
+            title={t('chat.chooseFile')}
+            onClick={openFilePicker}
+          >
+            <span aria-hidden="true">+</span>
+          </button>
         ) : null}
 
-        {fileError ? <p className="composer-error">{fileError}</p> : null}
-        {!fileError && isProcessingFile ? <p className="composer-status">{t('chat.processingFile')}</p> : null}
-
-        <textarea
-          value={value}
-          rows="1"
-          placeholder={placeholder || t('chat.inputPlaceholder')}
-          autoComplete="off"
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              if (canSend && !isProcessingFile) event.currentTarget.form?.requestSubmit()
-            }
-          }}
-        />
+        <button
+          type="submit"
+          className="composer-submit-button"
+          aria-label={submitLabel || t('chat.send')}
+          title={submitLabel || t('chat.send')}
+          disabled={!canSend || isProcessingFile}
+        >
+          <span aria-hidden="true">↑</span>
+          <span className="composer-submit-label">{submitLabel || t('chat.send')}</span>
+        </button>
       </div>
 
       <input ref={fileInput} className="composer-file-input" type="file" onChange={handleFileChange} />
 
-      {allowAttachments ? (
-        <button
-          type="button"
-          className="composer-icon-button composer-file-button"
-          aria-label={t('chat.chooseFile')}
-          title={t('chat.chooseFile')}
-          onClick={openFilePicker}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
+      {allowGames ? (
+        <div className="composer-game-row">
+          <button
+            type="button"
+            className="composer-icon-button composer-game-button"
+            aria-label={t('chat.inviteGame')}
+            title={t('chat.inviteGame')}
+            onClick={onGameInvite}
+          >
+            <span aria-hidden="true">♠</span>
+          </button>
+        </div>
       ) : null}
-
-      <button
-        type="submit"
-        className="composer-submit-button"
-        aria-label={submitLabel || t('chat.send')}
-        title={submitLabel || t('chat.send')}
-        disabled={!canSend || isProcessingFile}
-      >
-        <span aria-hidden="true">↑</span>
-        <span className="composer-submit-label">{submitLabel || t('chat.send')}</span>
-      </button>
     </form>
   )
 }

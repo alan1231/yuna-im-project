@@ -29,7 +29,7 @@ const formatDateLabel = (value, t, language) => {
   })
 }
 
-export default function MessageList({ messages, activeRoom }) {
+export default function MessageList({ messages, activeRoom, onGameResponse }) {
   const { i18n, t } = useTranslation()
   const messageList = useRef(null)
   const messageEnd = useRef(null)
@@ -78,7 +78,12 @@ export default function MessageList({ messages, activeRoom }) {
             {item.label}
           </div>
         ) : (
-          <MessageBubble key={item.key} message={item.message} showSenderName={activeRoom.isGroup} />
+          <MessageBubble
+            key={item.key}
+            message={item.message}
+            showSenderName={activeRoom.isGroup}
+            onGameResponse={onGameResponse}
+          />
         ),
       )}
 
