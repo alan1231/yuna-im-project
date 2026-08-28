@@ -94,9 +94,12 @@ function ChatRoute() {
       })
     } catch (error) {
       console.error('Account creation failed:', error)
-      setAccountError(error instanceof Error && error.message.includes('409')
+      const status = error instanceof Error ? (error as Error & { status?: number }).status : undefined
+      setAccountError(status === 409
         ? t('account.errors.duplicateName')
-        : t('account.errors.createFailed'))
+        : status
+          ? t('account.errors.createFailed')
+          : t('account.errors.backendUnavailable'))
     }
   }
 
@@ -115,7 +118,12 @@ function ChatRoute() {
       })
     } catch (error) {
       console.error('Sign in failed:', error)
-      setAccountError(t('account.errors.loginFailed'))
+      const status = error instanceof Error ? (error as Error & { status?: number }).status : undefined
+      setAccountError(status === 401
+        ? t('account.errors.loginNotFound')
+        : status
+          ? t('account.errors.loginFailed')
+          : t('account.errors.backendUnavailable'))
     }
   }
 

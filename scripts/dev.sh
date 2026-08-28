@@ -4,6 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PIDS=()
 
+load_env_file() {
+  local env_file="$1"
+  if [ -f "$env_file" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$env_file"
+    set +a
+  fi
+}
+
+# Load backend secrets (e.g. MongoDB Atlas + Upstash Redis) for local development.
+# Create backend-go/.env from backend-go/env.example and fill in your cloud values.
+load_env_file "$ROOT_DIR/backend-go/.env"
+
 cleanup() {
   echo
   echo "Stopping dev services..."

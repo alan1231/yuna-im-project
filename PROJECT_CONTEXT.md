@@ -9,7 +9,6 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 ## Architecture
 
 - `frontend-react`: React app for account setup, chat, friend management, and the admin console.
-- `frontend-vue`: Vue 3 parallel frontend that targets the same backend routes.
 - `backend-go`: HTTP API, WebSocket sessions, shared MongoDB Change Stream hub, Redis-backed presence, read receipts, and admin endpoints.
 - MongoDB: Durable storage for users, messages, friends, and friend requests.
 - Redis: Short-lived online presence and WebSocket connection counts.

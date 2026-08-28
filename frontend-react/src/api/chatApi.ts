@@ -29,7 +29,9 @@ const withAuth = (init: RequestInit = {}): RequestInit => {
 const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
   const response = await fetch(input, withAuth(init))
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`)
+    const error = new Error(`Request failed: ${response.status}`) as Error & { status?: number }
+    error.status = response.status
+    throw error
   }
 
   return (await response.json()) as T
@@ -38,7 +40,9 @@ const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Pro
 const requestOk = async (input: RequestInfo | URL, init?: RequestInit): Promise<void> => {
   const response = await fetch(input, withAuth(init))
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`)
+    const error = new Error(`Request failed: ${response.status}`) as Error & { status?: number }
+    error.status = response.status
+    throw error
   }
 }
 

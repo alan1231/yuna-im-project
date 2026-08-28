@@ -87,6 +87,126 @@ button {
   background: var(--accent);
 }
 
+.account-brand {
+  position: relative;
+  overflow: hidden;
+}
+
+.account-brand-qr {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 152px;
+  padding: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(18, 25, 38, 0.18);
+  text-align: center;
+}
+
+.account-brand-qr img {
+  width: 128px;
+  height: 128px;
+}
+
+.account-brand-qr small {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.account-brand-share-button {
+  display: none;
+}
+
+.account-brand-qr-dialog {
+  display: contents;
+}
+
+.account-brand-qr-close {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .account-brand-share-button {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+    display: inline-flex;
+    min-height: 34px;
+    padding: 0 12px;
+    align-items: center;
+    color: var(--accent-dark);
+    background: #ffffff;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .account-brand-qr-dialog {
+    display: none;
+  }
+
+  .account-brand-qr-dialog.is-open {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(8, 22, 20, 0.62);
+  }
+
+  .account-brand-qr-dialog.is-open .account-brand-qr {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: min(280px, 100%);
+    padding: 18px;
+    transform: none;
+    gap: 8px;
+    animation: account-qr-dialog-in 160ms ease-out;
+  }
+
+  .account-brand-qr-dialog.is-open .account-brand-qr img {
+    width: min(220px, 100%);
+    height: auto;
+  }
+
+  .account-brand-qr-close {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    display: block;
+    padding: 0 6px;
+    color: var(--muted);
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+}
+
+@keyframes account-qr-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .account-screen {
   min-height: 100svh;
   display: grid;
@@ -541,6 +661,88 @@ button {
   color: #8b95a1;
   background: #d9dee7;
   cursor: not-allowed;
+}
+
+.contact-search-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+}
+
+.contact-search-input:focus {
+  border-color: #7ab8ff;
+  box-shadow: 0 0 0 3px rgba(122, 184, 255, 0.2);
+}
+
+.add-contact-user-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.add-contact-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  color: #e8eef6;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.add-contact-user-row:hover {
+  background: rgba(122, 184, 255, 0.16);
+  border-color: rgba(122, 184, 255, 0.4);
+}
+
+.add-contact-user-name {
+  flex: 1;
+  font-weight: 700;
+}
+
+.presence-online-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #34d399;
+}
+
+.friend-invite-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 120;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 14px 18px;
+  color: #ffffff;
+  background: var(--accent-dark);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.3);
+  font-weight: 800;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: friend-invite-toast-in 180ms ease-out;
+}
+
+@keyframes friend-invite-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 .group-modal {
@@ -1319,6 +1521,112 @@ h1 {
   color: #ffffff;
   background: var(--danger);
   border: 1px solid var(--danger);
+}
+
+.video-call-button {
+  color: #ffffff;
+  background: #2563eb;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.video-call-button:hover {
+  background: #1d4ed8;
+}
+
+.video-call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 22, 20, 0.7);
+}
+
+.video-call-overlay.is-active {
+  display: flex;
+}
+
+.video-call-panel {
+  width: min(720px, 100%);
+  max-height: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #0f1f1c;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.video-call-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #05100e;
+}
+
+.video-call-remote,
+.video-call-local {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #05100e;
+}
+
+.video-call-local {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 28%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  object-fit: cover;
+}
+
+.video-call-info {
+  display: grid;
+  gap: 2px;
+  color: #e5f7f3;
+  text-align: center;
+}
+
+.video-call-info span {
+  color: #7dd3c8;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.video-call-info strong {
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-call-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.video-call-actions button {
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .message-list {
@@ -2361,6 +2669,12 @@ h1 {
 }
 
 @media (max-width: 768px) {
+  #app {
+    height: auto;
+    min-height: 100svh;
+    overflow: visible;
+  }
+
   .language-switcher {
     top: 10px;
     right: 10px;

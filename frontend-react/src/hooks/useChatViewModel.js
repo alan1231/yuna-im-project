@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useMediaCall } from './useMediaCall'
 import {
   addFriend as addFriendApi,
   chatQueryKeys,
@@ -21,7 +22,6 @@ import { WS_URL } from '../config/api'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 const MAX_HANDLED_REQUEST_IDS = 100
-const VOICE_ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 const getConversationId = (userId, recipientId) => {
   const [firstId, secondId] = [userId, recipientId].sort()
@@ -157,13 +157,6 @@ export const useChatViewModel = (currentUser) => {
   const [connectionError, setConnectionError] = useState('')
   const [isWakingBackend, setIsWakingBackend] = useState(false)
   const [roomError, setRoomError] = useState('')
-  const [voiceCall, setVoiceCall] = useState({
-    status: 'idle',
-    roomId: '',
-    peerId: '',
-    peerName: '',
-    isMuted: false,
-  })
 
   const roomsRef = useRef(rooms)
   const activeRoomIdRef = useRef(activeRoomId)
@@ -175,11 +168,9 @@ export const useChatViewModel = (currentUser) => {
   const shouldReconnectRef = useRef(false)
   const isConnectingRef = useRef(false)
   const hasConnectedRef = useRef(false)
-  const peerConnectionRef = useRef(null)
-  const localStreamRef = useRef(null)
-  const remoteAudioRef = useRef(null)
-  const ringtoneRef = useRef(null)
-  const pendingOfferRef = useRef(null)
+  const voiceRemoteRef = useRef(null)
+  const videoRemoteRef = useRef(null)
+  const videoLocalRef = useRef(null)
   const handledRequestIdsRef = useRef(new Set())
   const handledGroupIdsRef = useRef(new Set())
   const loadedConversationIdsRef = useRef(new Set())
@@ -311,7 +302,7 @@ export const useChatViewModel = (currentUser) => {
 
   const appendMessage = useCallback((data, options = {}) => {
     const message = normalizeIncomingMessage(data, currentUser.id)
-    const conversationId = message.conversationId || getActiveRoom().conversationId
+    const conversationId = message.conversationId || getActiveRoom()?.conversationId || ''
     const isGroupMessage = isGroupConversation(conversationId)
     const otherUserId = message.isSelf ? message.recipientId : message.senderId
     const otherUserName = message.isSelf ? '' : message.sender
@@ -360,7 +351,7 @@ export const useChatViewModel = (currentUser) => {
   }, [appendRoom, currentUser.id, getActiveRoom, pruneMessages, t, touchConversationCache, updateRoomSummary])
 
   const addSystemMessage = useCallback((text) => {
-    const conversationId = getActiveRoom().conversationId
+    const conversationId = getActiveRoom()?.conversationId || ''
     const message = {
       sender: 'System',
       senderId: 'system',
@@ -384,7 +375,7 @@ export const useChatViewModel = (currentUser) => {
     socket.send(
       JSON.stringify({
         type: 'active_conversation',
-        conversation_id: getActiveRoom().conversationId,
+        conversation_id: getActiveRoom()?.conversationId || '',
       }),
     )
   }, [getActiveRoom])
@@ -474,259 +465,43 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [activateRoom, appendRoom, currentUser.id, t])
 
-  const sendVoiceSignal = useCallback((type, room, payload = {}) => {
-    const socket = socketRef.current
-    if (!socket || socket.readyState !== WebSocket.OPEN || !room?.recipientId || !room?.conversationId) {
-      setConnectionError(t('chat.errors.reconnecting'))
-      return false
-    }
+  const voiceCall = useMediaCall({
+    media: 'voice',
+    currentUserId: currentUser.id,
+    getSocket: () => socketRef.current,
+    getRooms: () => roomsRef.current,
+    getActiveRoom,
+    remoteRef: voiceRemoteRef,
+    onError: setRoomError,
+  })
+  const videoCall = useMediaCall({
+    media: 'video',
+    currentUserId: currentUser.id,
+    getSocket: () => socketRef.current,
+    getRooms: () => roomsRef.current,
+    getActiveRoom,
+    remoteRef: videoRemoteRef,
+    localRef: videoLocalRef,
+    onError: setRoomError,
+  })
 
-    socket.send(
-      JSON.stringify({
-        type,
-        sender_id: currentUser.id,
-        recipient_id: room.recipientId,
-        conversation_id: room.conversationId,
-        ...payload,
-      }),
-    )
-    return true
-  }, [currentUser.id, t])
-
-  const stopIncomingRingtone = useCallback(() => {
-    const ringtone = ringtoneRef.current
-    if (!ringtone) return
-
-    window.clearInterval(ringtone.intervalId)
-    ringtone.nodes.forEach((node) => {
-      try {
-        node.stop()
-      } catch {
-        // The oscillator may already be stopped by its scheduled end time.
-      }
-      node.disconnect()
-    })
-    ringtone.gain?.disconnect()
-    ringtone.audioContext?.close().catch(() => {})
-    ringtoneRef.current = null
+  const setVoiceRemoteElement = useCallback((element) => {
+    voiceRemoteRef.current = element
+  }, [])
+  const setVideoRemoteElement = useCallback((element) => {
+    videoRemoteRef.current = element
+  }, [])
+  const setVideoLocalElement = useCallback((element) => {
+    videoLocalRef.current = element
   }, [])
 
-  const startIncomingRingtone = useCallback(() => {
-    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext
-    if (ringtoneRef.current || !AudioContextConstructor) return
-
-    const audioContext = new AudioContextConstructor()
-    const gain = audioContext.createGain()
-    gain.gain.value = 0.05
-    gain.connect(audioContext.destination)
-
-    const playTone = () => {
-      const now = audioContext.currentTime
-      const nodes = []
-
-      ;[0, 0.38].forEach((offset) => {
-        const oscillator = audioContext.createOscillator()
-        oscillator.type = 'sine'
-        oscillator.frequency.setValueAtTime(660, now + offset)
-        oscillator.frequency.exponentialRampToValueAtTime(880, now + offset + 0.18)
-        oscillator.connect(gain)
-        oscillator.start(now + offset)
-        oscillator.stop(now + offset + 0.28)
-        nodes.push(oscillator)
-      })
-
-      ringtoneRef.current = {
-        ...ringtoneRef.current,
-        nodes,
-      }
-    }
-
-    ringtoneRef.current = {
-      audioContext,
-      intervalId: window.setInterval(playTone, 1600),
-      gain,
-      nodes: [],
-    }
-
-    audioContext.resume().then(playTone).catch(() => {
-      stopIncomingRingtone()
-    })
-  }, [stopIncomingRingtone])
-
-  const cleanupVoiceCall = useCallback(() => {
-    stopIncomingRingtone()
-    peerConnectionRef.current?.close()
-    peerConnectionRef.current = null
-    localStreamRef.current?.getTracks().forEach((track) => track.stop())
-    localStreamRef.current = null
-    pendingOfferRef.current = null
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null
-    }
-  }, [stopIncomingRingtone])
-
-  const setRemoteAudioElement = useCallback((element) => {
-    remoteAudioRef.current = element
-  }, [])
-
-  const createPeerConnection = useCallback((room) => {
-    const peer = new RTCPeerConnection({ iceServers: VOICE_ICE_SERVERS })
-    peer.onicecandidate = (event) => {
-      if (event.candidate) {
-        sendVoiceSignal('voice_ice', room, { candidate: event.candidate.toJSON() })
-      }
-    }
-    peer.ontrack = (event) => {
-      const [stream] = event.streams
-      if (remoteAudioRef.current && stream) {
-        remoteAudioRef.current.srcObject = stream
-        remoteAudioRef.current.play().catch(() => {})
-      }
-    }
-    peer.onconnectionstatechange = () => {
-      if (['failed', 'disconnected', 'closed'].includes(peer.connectionState)) {
-        cleanupVoiceCall()
-        setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
-      }
-    }
-    peerConnectionRef.current = peer
-    return peer
-  }, [cleanupVoiceCall, sendVoiceSignal])
-
-  const ensureLocalAudioStream = useCallback(async () => {
-    if (localStreamRef.current) return localStreamRef.current
-    const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-    localStreamRef.current = stream
-    return stream
-  }, [])
-
-  const findRoomForVoiceSignal = useCallback((payload) => {
-    return roomsRef.current.find((room) => {
-      return room.conversationId === payload.conversation_id || room.recipientId === payload.sender_id
-    })
-  }, [])
-
-  const handleVoiceOffer = useCallback((payload) => {
-    const room = findRoomForVoiceSignal(payload)
-    if (!room || room.isGroup) return
-
-    pendingOfferRef.current = payload
-    startIncomingRingtone()
-    setVoiceCall({
-      status: 'incoming',
-      roomId: room.id,
-      peerId: payload.sender_id,
-      peerName: room.name,
-      isMuted: false,
-    })
-  }, [findRoomForVoiceSignal, startIncomingRingtone])
-
-  const handleVoiceAnswer = useCallback(async (payload) => {
-    const peer = peerConnectionRef.current
-    if (!peer || !payload.answer) return
-
-    await peer.setRemoteDescription(new RTCSessionDescription(payload.answer))
-    setVoiceCall((current) => ({ ...current, status: 'connected' }))
-  }, [])
-
-  const handleVoiceIce = useCallback(async (payload) => {
-    const peer = peerConnectionRef.current
-    if (!peer || !payload.candidate) return
-
-    try {
-      await peer.addIceCandidate(new RTCIceCandidate(payload.candidate))
-    } catch (error) {
-      console.error('Failed to add voice ICE candidate:', error)
-    }
-  }, [])
-
-  const handleVoiceEnd = useCallback(() => {
-    cleanupVoiceCall()
-    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
-  }, [cleanupVoiceCall])
-
-  const startVoiceCall = useCallback(async () => {
-    const room = getActiveRoom()
-    if (!room || room.isGroup) return
-
-    try {
-      cleanupVoiceCall()
-      const stream = await ensureLocalAudioStream()
-      const peer = createPeerConnection(room)
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream))
-      const offer = await peer.createOffer()
-      await peer.setLocalDescription(offer)
-      if (!sendVoiceSignal('voice_offer', room, { offer })) return
-
-      setVoiceCall({
-        status: 'calling',
-        roomId: room.id,
-        peerId: room.recipientId,
-        peerName: room.name,
-        isMuted: false,
-      })
-    } catch (error) {
-      console.error('Start voice call failed:', error)
-      cleanupVoiceCall()
-      setRoomError(t('chat.errors.voiceStartFailed'))
-    }
-  }, [cleanupVoiceCall, createPeerConnection, ensureLocalAudioStream, getActiveRoom, sendVoiceSignal, t])
-
-  const acceptVoiceCall = useCallback(async () => {
-    const offer = pendingOfferRef.current
-    const room = offer ? findRoomForVoiceSignal(offer) : null
-    if (!offer || !room) return
-
-    try {
-      cleanupVoiceCall()
-      const stream = await ensureLocalAudioStream()
-      const peer = createPeerConnection(room)
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream))
-      await peer.setRemoteDescription(new RTCSessionDescription(offer.offer))
-      const answer = await peer.createAnswer()
-      await peer.setLocalDescription(answer)
-      sendVoiceSignal('voice_answer', room, { answer })
-      pendingOfferRef.current = null
-      setVoiceCall({
-        status: 'connected',
-        roomId: room.id,
-        peerId: room.recipientId,
-        peerName: room.name,
-        isMuted: false,
-      })
-    } catch (error) {
-      console.error('Accept voice call failed:', error)
-      cleanupVoiceCall()
-      setRoomError(t('chat.errors.voiceStartFailed'))
-    }
-  }, [cleanupVoiceCall, createPeerConnection, ensureLocalAudioStream, findRoomForVoiceSignal, sendVoiceSignal, t])
-
-  const rejectVoiceCall = useCallback(() => {
-    const offer = pendingOfferRef.current
-    const room = offer ? findRoomForVoiceSignal(offer) : null
-    if (room) {
-      sendVoiceSignal('voice_reject', room)
-    }
-    cleanupVoiceCall()
-    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
-  }, [cleanupVoiceCall, findRoomForVoiceSignal, sendVoiceSignal])
-
-  const endVoiceCall = useCallback(() => {
-    const room = roomsRef.current.find((item) => item.id === voiceCall.roomId)
-    if (room) {
-      sendVoiceSignal('voice_end', room)
-    }
-    cleanupVoiceCall()
-    setVoiceCall({ status: 'idle', roomId: '', peerId: '', peerName: '', isMuted: false })
-  }, [cleanupVoiceCall, sendVoiceSignal, voiceCall.roomId])
-
-  const toggleVoiceMute = useCallback(() => {
-    const nextMuted = !voiceCall.isMuted
-    localStreamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted
-    })
-    setVoiceCall((current) => ({ ...current, isMuted: nextMuted }))
-  }, [voiceCall.isMuted])
+  const routeCallSignal = useCallback(
+    (type, payload) => {
+      voiceCall.handleSignal(type, payload)
+      videoCall.handleSignal(type, payload)
+    },
+    [voiceCall.handleSignal, videoCall.handleSignal],
+  )
 
   const handleWebSocketEvent = useCallback(async (data) => {
     if (!data.type) {
@@ -751,17 +526,16 @@ export const useChatViewModel = (currentUser) => {
         applyReadReceipt(data.payload)
         break
       case 'voice_offer':
-        handleVoiceOffer(data.payload)
-        break
       case 'voice_answer':
-        await handleVoiceAnswer(data.payload)
-        break
       case 'voice_ice':
-        await handleVoiceIce(data.payload)
-        break
       case 'voice_reject':
       case 'voice_end':
-        handleVoiceEnd()
+      case 'video_offer':
+      case 'video_answer':
+      case 'video_ice':
+      case 'video_reject':
+      case 'video_end':
+        routeCallSignal(data.type, data.payload)
         break
       default:
         console.warn('Unknown WebSocket event:', data)
@@ -773,10 +547,7 @@ export const useChatViewModel = (currentUser) => {
     currentUser.id,
     handleFriendRequest,
     handleGroupAdded,
-    handleVoiceAnswer,
-    handleVoiceEnd,
-    handleVoiceIce,
-    handleVoiceOffer,
+    routeCallSignal,
     t,
   ])
 
@@ -790,8 +561,9 @@ export const useChatViewModel = (currentUser) => {
     const socket = socketRef.current
     socketRef.current = null
     socket?.close()
-    cleanupVoiceCall()
-  }, [cleanupVoiceCall])
+    voiceCall.cleanup()
+    videoCall.cleanup()
+  }, [voiceCall.cleanup, videoCall.cleanup])
 
   const connect = useCallback(async () => {
     if (
@@ -814,7 +586,10 @@ export const useChatViewModel = (currentUser) => {
 
       const url = new URL(WS_URL)
       url.searchParams.set('ticket', ticket)
-      url.searchParams.set('conversation_id', getActiveRoom().conversationId)
+      const activeRoom = getActiveRoom()
+      if (activeRoom) {
+        url.searchParams.set('conversation_id', activeRoom.conversationId)
+      }
       socket = new WebSocket(url)
       socketRef.current = socket
     } catch (error) {
@@ -1165,10 +940,13 @@ export const useChatViewModel = (currentUser) => {
         queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
         queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
       ])
-      setRoomError(t('chat.errors.friendInviteSent'))
+      setRoomError('')
+      return true
     } catch (error) {
       console.error('Add friend failed:', error)
-      setRoomError(t('chat.errors.addFriendFailed'))
+      const status = error && error.status
+      setRoomError(status === 404 ? t('chat.errors.friendNotFound') : t('chat.errors.addFriendFailed'))
+      return false
     }
   }, [currentUser.id, queryClient, t])
 
@@ -1264,17 +1042,9 @@ export const useChatViewModel = (currentUser) => {
       isActive = false
       disconnect()
     }
-  }, [
-    connect,
-    disconnect,
-    getActiveRoom,
-    loadConversations,
-    loadFriendRequests,
-    loadFriends,
-    loadGroups,
-    loadMessagesForRoom,
-    loadUsers,
-  ])
+    // Initialization belongs to the authenticated user session, not callback identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id])
 
   return {
     rooms,
@@ -1290,8 +1060,11 @@ export const useChatViewModel = (currentUser) => {
     isWakingBackend,
     roomError,
     canSend,
-    voiceCall,
-    setRemoteAudioElement,
+    voiceCall: voiceCall.call,
+    videoCall: videoCall.call,
+    setVoiceRemoteElement,
+    setVideoRemoteElement,
+    setVideoLocalElement,
     selectRoom,
     startChatWithUser,
     addFriend,
@@ -1301,12 +1074,19 @@ export const useChatViewModel = (currentUser) => {
     attachFile,
     clearFileAttachment,
     refreshFriends: loadFriends,
+    refreshUsers: loadUsers,
     wakeBackend,
     sendMessage,
-    startVoiceCall,
-    acceptVoiceCall,
-    rejectVoiceCall,
-    endVoiceCall,
-    toggleVoiceMute,
+    startVoiceCall: voiceCall.startCall,
+    acceptVoiceCall: voiceCall.acceptCall,
+    rejectVoiceCall: voiceCall.rejectCall,
+    endVoiceCall: voiceCall.endCall,
+    toggleVoiceMute: voiceCall.toggleMute,
+    startVideoCall: videoCall.startCall,
+    acceptVideoCall: videoCall.acceptCall,
+    rejectVideoCall: videoCall.rejectCall,
+    endVideoCall: videoCall.endCall,
+    toggleVideoMute: videoCall.toggleMute,
+    toggleVideoCamera: videoCall.toggleCamera,
   }
 }

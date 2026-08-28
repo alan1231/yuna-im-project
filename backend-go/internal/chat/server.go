@@ -258,9 +258,10 @@ func eventMatchesClient(event changeStreamEvent, client *wsClient) bool {
 	}
 }
 
-func isVoiceSignalType(eventType string) bool {
+func isCallSignalType(eventType string) bool {
 	switch eventType {
-	case "voice_offer", "voice_answer", "voice_ice", "voice_reject", "voice_end":
+	case "voice_offer", "voice_answer", "voice_ice", "voice_reject", "voice_end",
+		"video_offer", "video_answer", "video_ice", "video_reject", "video_end":
 		return true
 	default:
 		return false
@@ -928,11 +929,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		http.Error(w, "invalid websocket ticket", http.StatusUnauthorized)
 		return
 	}
-	conversationID := r.URL.Query().Get("conversation_id")
-	if conversationID == "" {
-		http.Error(w, "conversation_id is required", http.StatusBadRequest)
-		return
-	}
+	conversationID := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
 	exists, err := userExists(r.Context(), client, userID)
 	if err != nil {
 		http.Error(w, "user lookup unavailable", http.StatusServiceUnavailable)
@@ -967,7 +964,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	hub.register(wsClient)
 	defer hub.unregister(wsClient)
 	go writeWebSocketEvents(ctx, ws, wsClient)
-	markConversationRead(ctx, client, userID, conversationID)
+	if conversationID != "" {
+		markConversationRead(ctx, client, userID, conversationID)
+	}
 
 	collection := client.Database(databaseName).Collection(collectionName)
 
@@ -986,7 +985,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 				markConversationRead(ctx, client, userID, nextConversationID)
 			}
 			continue
-		} else if isVoiceSignalType(eventType) {
+		} else if isCallSignalType(eventType) {
 			forwardVoiceSignal(ctx, client, redisClient, userID, msg)
 			continue
 		}

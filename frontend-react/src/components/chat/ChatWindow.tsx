@@ -6,6 +6,7 @@ import ChatHeader from './ChatHeader'
 import MessageList from './MessageList.jsx'
 import RoomList from './RoomList.jsx'
 import VoiceCallBar from './VoiceCallBar.jsx'
+import VideoCallBar from './VideoCallBar.jsx'
 import { useChatUiStore } from '../../stores/chatUiStore'
 import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
 
@@ -34,7 +35,10 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     roomError,
     canSend,
     voiceCall,
-    setRemoteAudioElement,
+    videoCall,
+    setVoiceRemoteElement,
+    setVideoRemoteElement,
+    setVideoLocalElement,
     selectRoom,
     startChatWithUser,
     addFriend,
@@ -44,6 +48,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     attachFile,
     clearFileAttachment,
     refreshFriends,
+    refreshUsers,
     wakeBackend,
     sendMessage,
     startVoiceCall,
@@ -51,6 +56,12 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     rejectVoiceCall,
     endVoiceCall,
     toggleVoiceMute,
+    startVideoCall,
+    acceptVideoCall,
+    rejectVideoCall,
+    endVideoCall,
+    toggleVideoMute,
+    toggleVideoCamera,
   } = useChatViewModel(currentUser)
   const typedActiveRoom = activeRoom as ChatRoom | undefined
 
@@ -108,7 +119,28 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         onDeleteFriend={deleteFriend}
         onCreateGroup={createGroup}
         onRefreshFriends={refreshFriends}
+        onRefreshUsers={refreshUsers}
         onLogout={onLogout}
+      />
+
+      <VoiceCallBar
+        voiceCall={voiceCall}
+        onAccept={acceptVoiceCall}
+        onReject={rejectVoiceCall}
+        onEnd={endVoiceCall}
+        onToggleMute={toggleVoiceMute}
+        remoteAudioRef={setVoiceRemoteElement}
+      />
+
+      <VideoCallBar
+        videoCall={videoCall}
+        onAccept={acceptVideoCall}
+        onReject={rejectVideoCall}
+        onEnd={endVideoCall}
+        onToggleMute={toggleVideoMute}
+        onToggleCamera={toggleVideoCamera}
+        remoteVideoRef={setVideoRemoteElement}
+        localVideoRef={setVideoLocalElement}
       />
 
       {typedActiveRoom ? (
@@ -117,10 +149,12 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
             isConnected={isConnected}
             room={typedActiveRoom}
             memberNames={activeRoomMemberNames}
-            canStartVoiceCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle'}
+            canStartVoiceCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle' && videoCall.status === 'idle'}
+            canStartVideoCall={!typedActiveRoom.isGroup && voiceCall.status === 'idle' && videoCall.status === 'idle'}
             onBack={() => setMobileView('rooms')}
             onLeaveGroup={() => leaveGroup(typedActiveRoom.id)}
             onStartVoiceCall={startVoiceCall}
+            onStartVideoCall={startVideoCall}
           />
 
           {connectionError ? (
@@ -131,15 +165,6 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
               </button>
             </div>
           ) : null}
-
-          <VoiceCallBar
-            voiceCall={voiceCall}
-            onAccept={acceptVoiceCall}
-            onReject={rejectVoiceCall}
-            onEnd={endVoiceCall}
-            onToggleMute={toggleVoiceMute}
-            remoteAudioRef={setRemoteAudioElement}
-          />
 
           <MessageList
             messages={messages}

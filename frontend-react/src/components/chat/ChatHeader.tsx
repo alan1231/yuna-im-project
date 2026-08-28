@@ -6,9 +6,11 @@ type ChatHeaderProps = {
   room: ChatRoom
   memberNames?: string[]
   canStartVoiceCall?: boolean
+  canStartVideoCall?: boolean
   onBack: () => void
   onLeaveGroup: () => void
   onStartVoiceCall: () => void
+  onStartVideoCall: () => void
 }
 
 export default function ChatHeader({
@@ -16,9 +18,11 @@ export default function ChatHeader({
   room,
   memberNames = [],
   canStartVoiceCall = false,
+  canStartVideoCall = false,
   onBack,
   onLeaveGroup,
   onStartVoiceCall,
+  onStartVideoCall,
 }: ChatHeaderProps) {
   const { t } = useTranslation()
   const isGroup = Boolean(room.isGroup)
@@ -43,6 +47,11 @@ export default function ChatHeader({
         {canStartVoiceCall ? (
           <button type="button" className="voice-call-button" onClick={onStartVoiceCall}>
             {t('chat.voiceCall')}
+          </button>
+        ) : null}
+        {canStartVideoCall ? (
+          <button type="button" className="video-call-button" onClick={onStartVideoCall}>
+            {t('chat.videoCall')}
           </button>
         ) : null}
         {isGroup ? (

@@ -35,7 +35,6 @@ git push origin main
 ## Current Deployment
 
 - Frontend: Vercel, repo root directory `frontend-react`.
-- Vue frontend prototype added in `frontend-vue/` for local/dev comparison.
 - Go API/WebSocket: Render, repo root directory `backend-go`.
 - MongoDB: MongoDB Atlas M0.
 - Redis: Upstash Redis with TLS.

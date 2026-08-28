@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
+import NetworkQrCode from '../NetworkQrCode.jsx'
 
 type AccountMode = 'login' | 'create'
 
@@ -63,6 +64,7 @@ export default function AccountSetup({
     <main className="account-screen">
       <section className="account-entry" aria-label={t('account.brandName')}>
         <div className="account-brand">
+          <NetworkQrCode />
           <p className="eyebrow">{t('account.eyebrow')}</p>
           <h1>{t('account.brandName')}</h1>
           <p>{t('account.brandCopy')}</p>

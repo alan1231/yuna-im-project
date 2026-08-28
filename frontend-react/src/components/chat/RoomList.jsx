@@ -4,10 +4,6 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
-const friendFormSchema = z.object({
-  friendName: z.string().trim().min(1).max(32),
-})
-
 const groupFormSchema = z.object({
   groupName: z.string().trim().min(1).max(32),
 })
@@ -53,6 +49,7 @@ export default function RoomList({
   onDeleteFriend,
   onCreateGroup,
   onRefreshFriends,
+  onRefreshUsers,
   onLogout,
 }) {
   const { i18n, t } = useTranslation()
@@ -64,20 +61,14 @@ export default function RoomList({
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
   const [drawerView, setDrawerView] = useState('menu')
   const [openFriendMenuId, setOpenFriendMenuId] = useState('')
-  const friendForm = useForm({
-    resolver: zodResolver(friendFormSchema),
-    defaultValues: {
-      friendName: '',
-    },
-  })
+  const [addFriendSearch, setAddFriendSearch] = useState('')
+  const [friendInviteToast, setFriendInviteToast] = useState('')
   const groupForm = useForm({
     resolver: zodResolver(groupFormSchema),
     defaultValues: {
       groupName: '',
     },
   })
-  const friendName = friendForm.watch('friendName')
-  const groupName = groupForm.watch('groupName')
   const normalizedSearch = searchText.trim().toLowerCase()
   const normalizedContactSearch = contactSearchText.trim().toLowerCase()
 
@@ -112,6 +103,19 @@ export default function RoomList({
     })
   }, [friendRooms, normalizedContactSearch])
 
+  const normalizedAddFriendSearch = addFriendSearch.trim().toLowerCase()
+  const addableUsers = useMemo(() => {
+    const friendUserIds = new Set(
+      rooms.filter((room) => room.isFriend && !room.isGroup).map((room) => room.recipientId),
+    )
+    return availableUsers
+      .filter((user) => !friendUserIds.has(user.user_id))
+      .filter(
+        (user) =>
+          !normalizedAddFriendSearch || user.display_name.toLowerCase().includes(normalizedAddFriendSearch),
+      )
+  }, [availableUsers, rooms, normalizedAddFriendSearch])
+
   const hasVisibleTargets = visibleRooms.length > 0 || visibleUsers.length > 0
 
   const openDrawer = () => {
@@ -140,11 +144,14 @@ export default function RoomList({
     onDeleteFriend(roomId)
   }
 
-  const submitFriend = friendForm.handleSubmit(({ friendName: rawFriendName }) => {
-    const name = rawFriendName.trim()
-    onAddFriend(name)
-    friendForm.reset()
-  })
+  const handleAddFriend = async (displayName) => {
+    const success = await onAddFriend(displayName)
+    if (!success) return
+
+    setIsAddFriendModalOpen(false)
+    setFriendInviteToast(t('chat.errors.friendInviteSent'))
+    window.setTimeout(() => setFriendInviteToast(''), 3200)
+  }
 
   const toggleGroupMember = (memberId) => {
     setSelectedGroupMemberIds((currentIds) =>
@@ -291,7 +298,14 @@ export default function RoomList({
             </nav>
 
             <div className="drawer-contact-footer">
-              <button type="button" className="drawer-add-toggle" onClick={() => setIsAddFriendModalOpen(true)}>
+              <button
+                type="button"
+                className="drawer-add-toggle"
+                onClick={() => {
+                  onRefreshUsers?.()
+                  setIsAddFriendModalOpen(true)
+                }}
+              >
                 {t('chat.addContact')}
               </button>
             </div>
@@ -307,7 +321,7 @@ export default function RoomList({
             if (event.target === event.currentTarget) setIsAddFriendModalOpen(false)
           }}
         >
-          <form className="add-contact-modal" onSubmit={submitFriend}>
+          <div className="add-contact-modal">
             <div className="modal-header">
               <h3>{t('chat.addContact')}</h3>
               <button
@@ -319,26 +333,38 @@ export default function RoomList({
                 ×
               </button>
             </div>
-            <label>
-              <span>{t('chat.addFriendPrompt')}</span>
-              <input
-                {...friendForm.register('friendName')}
-                type="text"
-                maxLength="32"
-                placeholder={t('chat.addFriendPlaceholder')}
-                autoComplete="off"
-              />
-            </label>
-            {friendForm.formState.errors.friendName ? (
-              <p className="room-error">{t('chat.errors.friendNameRequired')}</p>
-            ) : null}
+            <input
+              className="contact-search-input"
+              type="search"
+              value={addFriendSearch}
+              placeholder={t('chat.addFriendPlaceholder')}
+              autoComplete="off"
+              onChange={(event) => setAddFriendSearch(event.target.value)}
+            />
+            <nav className="add-contact-user-list" aria-label={t('chat.addContact')}>
+              {addableUsers.length === 0 ? (
+                <p className="drawer-empty">{t('chat.noUsersToAdd')}</p>
+              ) : (
+                addableUsers.map((user) => (
+                  <button
+                    type="button"
+                    key={user.user_id}
+                    className="add-contact-user-row"
+                    onClick={() => handleAddFriend(user.display_name)}
+                  >
+                    <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
+                    <span className="add-contact-user-name">{user.display_name}</span>
+                    {user.online ? <span className="presence-online-dot" aria-label={t('chat.presence.online')} /> : null}
+                  </button>
+                ))
+              )}
+            </nav>
             {error ? <p className="room-error">{error}</p> : null}
-            <button type="submit" disabled={!friendName.trim()}>
-              {t('chat.add')}
-            </button>
-          </form>
+          </div>
         </div>
       ) : null}
+
+      {friendInviteToast ? <div className="friend-invite-toast" role="status">{friendInviteToast}</div> : null}
 
       {isCreateGroupModalOpen ? (
         <div
