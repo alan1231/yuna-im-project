@@ -2,14 +2,40 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/bson"
 )
+
+func createPlayingBlackjackGame(t *testing.T, ctx context.Context, store *BlackjackStore, prefix string) blackjackSession {
+	t.Helper()
+	for attempt := range 20 {
+		session, err := store.Create(ctx, fmt.Sprintf("%s-%d", prefix, attempt), "dm:a:b", "a", "b")
+		if err != nil {
+			t.Fatalf("create game: %v", err)
+		}
+		if session.Status == "playing" {
+			activated, err := store.Activate(ctx, session.GameID)
+			if err != nil {
+				t.Fatalf("activate game: %v", err)
+			}
+			return activated
+		}
+		store.redis.Del(ctx, blackjackGameKey(session.GameID))
+		store.redis.ZRem(ctx, blackjackUserGamesKey("a"), session.GameID)
+		store.redis.ZRem(ctx, blackjackUserGamesKey("b"), session.GameID)
+		store.redis.ZRem(ctx, blackjackDeadlineKey, session.GameID)
+	}
+	t.Fatal("could not create a non-natural blackjack game")
+	return blackjackSession{}
+}
 
 func TestBlackjackDeckHasUniqueCards(t *testing.T) {
 	deck := blackjackDeck()
@@ -39,6 +65,9 @@ func TestBlackjackHitKeepsTurnUntilPlayerStands(t *testing.T) {
 	session := dealBlackjackSession("game-rules", "dm:a:b", []string{"a", "b"}, "a", now)
 	session.Hands["a"] = []string{"club02", "heart03"}
 	session.Deck = []string{"spade04"}
+	session.Status = "playing"
+	session.CurrentTurn = "a"
+	session.Stood = map[string]bool{"a": false, "b": false}
 
 	if !applyBlackjackActionToSession(&session, "a", "hit", now.Add(time.Second)) {
 		t.Fatal("hit was rejected")
@@ -59,10 +88,67 @@ func TestBlackjackRestartAlternatesStartingPlayer(t *testing.T) {
 	session := dealBlackjackSession("game-restart", "dm:a:b", []string{"a", "b"}, "a", now)
 	session.Status = "finished"
 	if !applyBlackjackActionToSession(&session, "a", "restart", now.Add(time.Minute)) {
-		t.Fatal("restart was rejected")
+		t.Fatal("first restart vote was rejected")
 	}
-	if session.StartingPlayer != "b" || session.CurrentTurn != "b" {
-		t.Fatalf("starter = %q, turn = %q, want b", session.StartingPlayer, session.CurrentTurn)
+	if session.Status != "finished" || !session.RestartVotes["a"] {
+		t.Fatalf("first restart vote did not wait: %#v", session)
+	}
+	if !applyBlackjackActionToSession(&session, "b", "restart", now.Add(time.Minute+time.Second)) {
+		t.Fatal("second restart vote was rejected")
+	}
+	if session.StartingPlayer != "b" {
+		t.Fatalf("starter = %q, want b", session.StartingPlayer)
+	}
+	if session.Status == "playing" && session.CurrentTurn != "b" {
+		t.Fatalf("turn = %q, want b", session.CurrentTurn)
+	}
+	if session.Status == "finished" && session.ResultReason != "natural_blackjack" {
+		t.Fatalf("unexpected finished restart: %#v", session)
+	}
+}
+
+func TestBlackjackNaturalFinishesImmediately(t *testing.T) {
+	session := blackjackSession{
+		PlayerIDs: []string{"a", "b"},
+		Hands: map[string][]string{
+			"a": {"spade01", "heart13"},
+			"b": {"club10", "diamond09"},
+		},
+		Stood:       map[string]bool{"a": false, "b": false},
+		Status:      "playing",
+		CurrentTurn: "a",
+	}
+	if !resolveNaturalBlackjack(&session) {
+		t.Fatal("natural blackjack was not resolved")
+	}
+	if session.Status != "finished" || session.Winner != "a" || session.ResultReason != "natural_blackjack" {
+		t.Fatalf("natural result = %#v", session)
+	}
+}
+
+func TestBlackjackStateHidesOpponentHandUntilStand(t *testing.T) {
+	session := blackjackSession{
+		PlayerIDs: []string{"a", "b"},
+		Hands: map[string][]string{
+			"a": {"spade02", "heart03"},
+			"b": {"club10", "diamond09"},
+		},
+		Stood:  map[string]bool{"a": false, "b": false},
+		Status: "playing",
+	}
+	state := blackjackStateForPlayer(session, "a")
+	hands := state["hands"].(map[string][]string)
+	if len(hands["a"]) != 2 || len(hands["b"]) != 0 {
+		t.Fatalf("viewer hand = %#v, opponent hand = %#v", hands["a"], hands["b"])
+	}
+	if state["hidden_card_counts"].(bson.M)["b"] != 2 {
+		t.Fatalf("hidden counts = %#v", state["hidden_card_counts"])
+	}
+
+	session.Stood["b"] = true
+	revealed := blackjackStateForPlayer(session, "a")
+	if len(revealed["hands"].(map[string][]string)["b"]) != 2 {
+		t.Fatalf("stood opponent hand was not revealed: %#v", revealed["hands"])
 	}
 }
 
@@ -78,11 +164,8 @@ func TestBlackjackStorePersistsGameForReconnect(t *testing.T) {
 	ctx := context.Background()
 	firstStore := NewBlackjackStore(firstClient)
 	secondStore := NewBlackjackStore(secondClient)
-	created, err := firstStore.Create(ctx, "game-1", "dm:a:b", "a", "b")
-	if err != nil {
-		t.Fatalf("create game: %v", err)
-	}
-	if _, err := secondStore.Create(ctx, "game-1", "dm:a:b", "a", "b"); !errors.Is(err, errBlackjackExists) {
+	created := createPlayingBlackjackGame(t, ctx, firstStore, "game-1")
+	if _, err := secondStore.Create(ctx, created.GameID, "dm:a:b", "a", "b"); !errors.Is(err, errBlackjackExists) {
 		t.Fatalf("duplicate create error = %v, want %v", err, errBlackjackExists)
 	}
 
@@ -102,7 +185,7 @@ func TestBlackjackStorePersistsGameForReconnect(t *testing.T) {
 	if starter == opponent {
 		opponent = created.PlayerIDs[1]
 	}
-	updated, err := secondStore.ApplyAction(ctx, starter, "game-1", "stand")
+	updated, err := secondStore.ApplyAction(ctx, starter, created.GameID, "stand")
 	if err != nil {
 		t.Fatalf("apply action: %v", err)
 	}
@@ -114,6 +197,32 @@ func TestBlackjackStorePersistsGameForReconnect(t *testing.T) {
 	}
 }
 
+func TestBlackjackStoreKeepsAcceptedGamePendingUntilActivation(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { client.Close() })
+	store := NewBlackjackStore(client)
+	ctx := context.Background()
+
+	pending, err := store.Create(ctx, "game-pending", "dm:a:b", "a", "b")
+	if err != nil {
+		t.Fatalf("create pending game: %v", err)
+	}
+	if sessions, err := store.ListForUser(ctx, "a"); err != nil || len(sessions) != 0 {
+		t.Fatalf("pending reconnect sessions = %#v, error = %v", sessions, err)
+	}
+	if _, err := store.ApplyAction(ctx, pending.CurrentTurn, pending.GameID, "stand"); !errors.Is(err, errBlackjackInvalid) {
+		t.Fatalf("pending action error = %v, want %v", err, errBlackjackInvalid)
+	}
+	activated, err := store.Activate(ctx, pending.GameID)
+	if err != nil || activated.PendingAcceptance {
+		t.Fatalf("activate game = %#v, error = %v", activated, err)
+	}
+	if sessions, err := store.ListForUser(ctx, "a"); err != nil || len(sessions) != 1 {
+		t.Fatalf("active reconnect sessions = %#v, error = %v", sessions, err)
+	}
+}
+
 func TestBlackjackStoreExpiresIdleGame(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
@@ -121,10 +230,7 @@ func TestBlackjackStoreExpiresIdleGame(t *testing.T) {
 	store := NewBlackjackStore(client)
 	ctx := context.Background()
 
-	created, err := store.Create(ctx, "game-timeout", "dm:a:b", "a", "b")
-	if err != nil {
-		t.Fatalf("create game: %v", err)
-	}
+	created := createPlayingBlackjackGame(t, ctx, store, "game-timeout")
 	expired, err := store.ExpireDue(ctx, created.LastActionAt.Add(blackjackIdleTimeout+time.Second))
 	if err != nil {
 		t.Fatalf("expire games: %v", err)
@@ -141,16 +247,38 @@ func TestBlackjackStoreExpiresIdleGame(t *testing.T) {
 	}
 }
 
+func TestBlackjackStoreRejectsActionAfterDeadline(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { client.Close() })
+	store := NewBlackjackStore(client)
+	ctx := context.Background()
+	created := createPlayingBlackjackGame(t, ctx, store, "game-action-timeout")
+	created.LastActionAt = time.Now().Add(-blackjackIdleTimeout - time.Second)
+	value, err := json.Marshal(created)
+	if err != nil {
+		t.Fatalf("marshal game: %v", err)
+	}
+	if err := client.Set(ctx, blackjackGameKey(created.GameID), value, blackjackSessionTTL).Err(); err != nil {
+		t.Fatalf("store expired game: %v", err)
+	}
+
+	updated, err := store.ApplyAction(ctx, created.StartingPlayer, created.GameID, "hit")
+	if err != nil {
+		t.Fatalf("expired action: %v", err)
+	}
+	if updated.Status != "canceled" || updated.ResultReason != "timeout" {
+		t.Fatalf("expired action revived game: %#v", updated)
+	}
+}
+
 func TestBlackjackStoreSerializesConcurrentActions(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { client.Close() })
 	store := NewBlackjackStore(client)
 	ctx := context.Background()
-	created, err := store.Create(ctx, "game-race", "dm:a:b", "a", "b")
-	if err != nil {
-		t.Fatalf("create game: %v", err)
-	}
+	created := createPlayingBlackjackGame(t, ctx, store, "game-race")
 
 	errorsByAction := make(chan error, 2)
 	var wait sync.WaitGroup
@@ -158,7 +286,7 @@ func TestBlackjackStoreSerializesConcurrentActions(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			_, err := store.ApplyAction(ctx, created.StartingPlayer, "game-race", "stand")
+			_, err := store.ApplyAction(ctx, created.StartingPlayer, created.GameID, "stand")
 			errorsByAction <- err
 		}()
 	}

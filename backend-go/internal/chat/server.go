@@ -93,8 +93,7 @@ type voiceSignalEnvelope struct {
 }
 
 type blackjackEventEnvelope struct {
-	PlayerIDs []string       `json:"player_ids"`
-	Event     websocketEvent `json:"event"`
+	Events map[string]websocketEvent `json:"events"`
 }
 
 func newChangeStreamHub(client *mongo.Client, blackjack *BlackjackStore) *changeStreamHub {
@@ -258,7 +257,7 @@ func (hub *changeStreamHub) sendActiveBlackjackGames(ctx context.Context, userID
 		if session.Status == "finished" || session.Status == "canceled" {
 			eventType = "game_result"
 		}
-		hub.sendToUser(userID, websocketEvent{Type: eventType, Payload: blackjackState(session)})
+		hub.sendToUser(userID, websocketEvent{Type: eventType, Payload: blackjackStateForPlayer(session, userID)})
 	}
 }
 
@@ -337,8 +336,8 @@ func deliverBlackjackEventPayload(hub *changeStreamHub, payload []byte) error {
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return err
 	}
-	for _, playerID := range envelope.PlayerIDs {
-		hub.sendToUser(playerID, envelope.Event)
+	for playerID, event := range envelope.Events {
+		hub.sendToUser(playerID, event)
 	}
 	return nil
 }
@@ -1057,9 +1056,19 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		} else if eventType == "game_action" {
 			gameID, _ := msg["game_id"].(string)
 			action, _ := msg["game_action"].(string)
+			actionID, _ := msg["action_id"].(string)
 			_, err := hub.blackjack.ApplyAction(ctx, userID, strings.TrimSpace(gameID), strings.TrimSpace(action))
-			if err != nil && !errors.Is(err, errBlackjackInvalid) && !errors.Is(err, redis.Nil) {
-				log.Printf("Redis 21 點操作失敗: game_id=%s error=%v", gameID, err)
+			if err != nil {
+				code := "invalid_action"
+				if errors.Is(err, redis.Nil) {
+					code = "game_not_found"
+				} else if !errors.Is(err, errBlackjackInvalid) {
+					code = "temporarily_unavailable"
+					log.Printf("Redis 21 點操作失敗: game_id=%s error=%v", gameID, err)
+				}
+				hub.sendToUser(userID, websocketEvent{Type: "game_action_error", Payload: bson.M{
+					"game_id": gameID, "game_action": action, "action_id": actionID, "code": code,
+				}})
 			}
 			continue
 		}
@@ -1092,39 +1101,67 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 			msg["conversation_id"] = conversationIDFor(userID, recipientID)
 		}
 
-		if gameType, _ := msg["game_type"].(string); gameType == "blackjack" {
-			if action, _ := msg["game_action"].(string); action == "invite" {
+		gameType, _ := msg["game_type"].(string)
+		gameAction, _ := msg["game_action"].(string)
+		gameResponseReservationKey := ""
+		var pendingBlackjackSession *blackjackSession
+		if gameType == "blackjack" {
+			if gameAction == "invite" {
 				if gameID, _ := msg["game_id"].(string); strings.TrimSpace(gameID) == "" {
 					msg["game_id"] = fmt.Sprintf("bj_%d", time.Now().UnixNano())
 				}
-			}
-		}
-
-		_, err := collection.InsertOne(ctx, msg)
-		if err != nil {
-			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
-			return
-		}
-
-		if gameType, _ := msg["game_type"].(string); gameType == "blackjack" {
-			if action, _ := msg["game_action"].(string); action == "accept" {
+			} else if gameAction == "accept" || gameAction == "reject" {
 				gameID, _ := msg["game_id"].(string)
-				if gameID != "" {
-					inviteExists, findErr := collection.CountDocuments(ctx, bson.M{
-						"game_id": gameID, "game_type": "blackjack", "game_action": "invite",
-						"sender_id": recipientID, "recipient_id": userID,
-					})
-					if findErr != nil || inviteExists == 0 {
-						continue
-					}
-					_, createErr := hub.blackjack.Create(ctx, gameID, msg["conversation_id"].(string), recipientID, userID)
+				gameID = strings.TrimSpace(gameID)
+				inviteCount, inviteErr := collection.CountDocuments(ctx, bson.M{
+					"game_id": gameID, "game_type": "blackjack", "game_action": "invite",
+					"sender_id": recipientID, "recipient_id": userID,
+					"time": bson.M{"$gte": time.Now().Add(-blackjackInviteTimeout)},
+				})
+				responseCount, responseErr := collection.CountDocuments(ctx, bson.M{
+					"game_id": gameID, "game_type": "blackjack",
+					"game_action": bson.M{"$in": bson.A{"accept", "reject"}},
+				})
+				if gameID == "" || inviteErr != nil || responseErr != nil || inviteCount == 0 || responseCount > 0 {
+					continue
+				}
+				gameResponseReservationKey = blackjackInviteResponseKey(gameID)
+				reserved, reserveErr := redisClient.SetNX(ctx, gameResponseReservationKey, gameAction, blackjackInviteTimeout).Result()
+				if reserveErr != nil || !reserved {
+					continue
+				}
+				if gameAction == "accept" {
+					session, createErr := hub.blackjack.Create(ctx, gameID, msg["conversation_id"].(string), recipientID, userID)
 					if createErr != nil {
+						redisClient.Del(ctx, gameResponseReservationKey)
 						if !errors.Is(createErr, errBlackjackExists) {
 							log.Printf("Redis 21 點牌局建立失敗: game_id=%s error=%v", gameID, createErr)
 						}
 						continue
 					}
+					pendingBlackjackSession = &session
 				}
+			}
+		}
+
+		inserted, err := collection.InsertOne(ctx, msg)
+		if err != nil {
+			if pendingBlackjackSession != nil {
+				hub.blackjack.Delete(ctx, *pendingBlackjackSession)
+			}
+			if gameResponseReservationKey != "" {
+				redisClient.Del(ctx, gameResponseReservationKey)
+			}
+			log.Printf("訊息寫入 MongoDB 失敗: %v", err)
+			return
+		}
+		if pendingBlackjackSession != nil {
+			if _, activateErr := hub.blackjack.Activate(ctx, pendingBlackjackSession.GameID); activateErr != nil {
+				collection.DeleteOne(ctx, bson.M{"_id": inserted.InsertedID})
+				hub.blackjack.Delete(ctx, *pendingBlackjackSession)
+				redisClient.Del(ctx, gameResponseReservationKey)
+				log.Printf("Redis 21 點牌局啟用失敗: game_id=%s error=%v", pendingBlackjackSession.GameID, activateErr)
+				continue
 			}
 		}
 

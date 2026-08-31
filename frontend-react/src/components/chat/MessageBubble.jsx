@@ -1,10 +1,13 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { blackjackInviteExpiresAt } from '../../utils/blackjack'
 
 export default function MessageBubble({ message, showSenderName = false, onGameResponse }) {
   const { i18n, t } = useTranslation()
   const [isImagePreviewOpen, setIsImagePreviewOpen] = useState(false)
+  const [isGameInviteExpired, setIsGameInviteExpired] = useState(false)
+  const [isGameResponsePending, setIsGameResponsePending] = useState(false)
   const imagePreviewModal = useRef(null)
   const isSelf = Boolean(message.isSelf)
   const isPending = Boolean(message.isPending)
@@ -37,6 +40,25 @@ export default function MessageBubble({ message, showSenderName = false, onGameR
       imagePreviewModal.current?.focus()
     }
   }, [isImagePreviewOpen])
+
+  useEffect(() => {
+    if (!isBlackjackInvite || message.gameResponse) return undefined
+    const expiresAt = blackjackInviteExpiresAt(message.sentAt)
+    const refreshExpiration = () => setIsGameInviteExpired(Date.now() >= expiresAt)
+    refreshExpiration()
+    const timer = window.setTimeout(refreshExpiration, Math.max(0, expiresAt - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [isBlackjackInvite, message.gameResponse, message.sentAt])
+
+  useEffect(() => {
+    if (message.gameResponse) setIsGameResponsePending(false)
+  }, [message.gameResponse])
+
+  useEffect(() => {
+    if (!isGameResponsePending) return undefined
+    const timer = window.setTimeout(() => setIsGameResponsePending(false), 10_000)
+    return () => window.clearTimeout(timer)
+  }, [isGameResponsePending])
 
   return (
     <>
@@ -81,15 +103,34 @@ export default function MessageBubble({ message, showSenderName = false, onGameR
             <span className="game-invite-icon" aria-hidden="true">♠</span>
             <strong>{t('chat.blackjackTitle')}</strong>
             <p>{t('chat.blackjackInvite')}</p>
-            {!isSelf && message.gameId ? (
+            {!isSelf && message.gameId && !message.gameResponse && !isGameInviteExpired ? (
               <div className="game-invite-actions">
-                <button type="button" onClick={() => onGameResponse?.(message.gameId, true)}>
+                <button type="button" disabled={isGameResponsePending} onClick={() => {
+                  setIsGameResponsePending(true)
+                  onGameResponse?.(message.gameId, true)
+                }}>
                   {t('chat.gameAccept')}
                 </button>
-                <button type="button" onClick={() => onGameResponse?.(message.gameId, false)}>
+                <button type="button" disabled={isGameResponsePending} onClick={() => {
+                  setIsGameResponsePending(true)
+                  onGameResponse?.(message.gameId, false)
+                }}>
                   {t('chat.gameReject')}
                 </button>
               </div>
+            ) : null}
+            {message.gameResponse || isGameInviteExpired || isSelf || isGameResponsePending ? (
+              <span className="game-invite-response">
+                {message.gameResponse === 'accept'
+                  ? t('chat.gameInviteAccepted')
+                  : message.gameResponse === 'reject'
+                    ? t('chat.gameInviteRejected')
+                    : isGameResponsePending
+                      ? t('chat.blackjackProcessing')
+                      : isGameInviteExpired
+                      ? t('chat.gameInviteExpired')
+                      : t('chat.gameInvitePending')}
+              </span>
             ) : null}
           </div>
         ) : null}

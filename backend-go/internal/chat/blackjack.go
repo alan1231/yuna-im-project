@@ -16,6 +16,7 @@ import (
 
 const (
 	blackjackIdleTimeout   = 5 * time.Minute
+	blackjackInviteTimeout = 5 * time.Minute
 	blackjackSessionTTL    = 30 * time.Minute
 	blackjackIndexTTL      = 24 * time.Hour
 	blackjackDeadlineKey   = "yuna-im:blackjack:deadlines"
@@ -28,19 +29,22 @@ var (
 )
 
 type blackjackSession struct {
-	GameID         string              `json:"game_id"`
-	ConversationID string              `json:"conversation_id"`
-	PlayerIDs      []string            `json:"player_ids"`
-	Status         string              `json:"status"`
-	CreatedAt      time.Time           `json:"created_at"`
-	Deck           []string            `json:"deck"`
-	Hands          map[string][]string `json:"hands"`
-	Stood          map[string]bool     `json:"stood"`
-	StartingPlayer string              `json:"starting_player"`
-	CurrentTurn    string              `json:"current_turn"`
-	Winner         string              `json:"winner,omitempty"`
-	LastActionAt   time.Time           `json:"last_action_at"`
-	Revision       int64               `json:"revision"`
+	GameID            string              `json:"game_id"`
+	ConversationID    string              `json:"conversation_id"`
+	PlayerIDs         []string            `json:"player_ids"`
+	Status            string              `json:"status"`
+	CreatedAt         time.Time           `json:"created_at"`
+	Deck              []string            `json:"deck"`
+	Hands             map[string][]string `json:"hands"`
+	Stood             map[string]bool     `json:"stood"`
+	StartingPlayer    string              `json:"starting_player"`
+	CurrentTurn       string              `json:"current_turn"`
+	Winner            string              `json:"winner,omitempty"`
+	ResultReason      string              `json:"result_reason,omitempty"`
+	RestartVotes      map[string]bool     `json:"restart_votes,omitempty"`
+	PendingAcceptance bool                `json:"pending_acceptance,omitempty"`
+	LastActionAt      time.Time           `json:"last_action_at"`
+	Revision          int64               `json:"revision"`
 }
 
 type BlackjackStore struct {
@@ -57,6 +61,10 @@ func blackjackGameKey(gameID string) string {
 
 func blackjackUserGamesKey(userID string) string {
 	return "yuna-im:blackjack:user:" + userID + ":games"
+}
+
+func blackjackInviteResponseKey(gameID string) string {
+	return "yuna-im:blackjack:invite-response:" + gameID
 }
 
 func newBlackjackSession(gameID, conversationID, firstPlayerID, secondPlayerID string, now time.Time) blackjackSession {
@@ -83,7 +91,7 @@ func dealBlackjackSession(gameID, conversationID string, playerIDs []string, sta
 			deck = deck[1:]
 		}
 	}
-	return blackjackSession{
+	session := blackjackSession{
 		GameID:         gameID,
 		ConversationID: conversationID,
 		PlayerIDs:      append([]string(nil), playerIDs...),
@@ -97,6 +105,8 @@ func dealBlackjackSession(gameID, conversationID string, playerIDs []string, sta
 		LastActionAt:   now,
 		Revision:       1,
 	}
+	resolveNaturalBlackjack(&session)
+	return session
 }
 
 func blackjackDeck() []string {
@@ -141,16 +151,85 @@ func blackjackScore(cards []string) int {
 
 func blackjackState(session blackjackSession) bson.M {
 	scores := bson.M{}
+	playerStates := bson.M{}
 	for playerID, hand := range session.Hands {
-		scores[playerID] = blackjackScore(hand)
+		score := blackjackScore(hand)
+		scores[playerID] = score
+		switch {
+		case score > 21:
+			playerStates[playerID] = "busted"
+		case session.Status == "canceled":
+			playerStates[playerID] = "canceled"
+		case session.Stood[playerID]:
+			playerStates[playerID] = "stood"
+		case session.Status == "finished":
+			playerStates[playerID] = "finished"
+		default:
+			playerStates[playerID] = "playing"
+		}
 	}
 	return bson.M{
 		"game_id": session.GameID, "game_type": "blackjack", "conversation_id": session.ConversationID,
-		"player_ids": session.PlayerIDs, "hands": session.Hands, "scores": scores,
+		"player_ids": session.PlayerIDs, "hands": session.Hands, "scores": scores, "player_states": playerStates,
 		"status": session.Status, "starting_player": session.StartingPlayer,
-		"current_turn": session.CurrentTurn, "winner": session.Winner,
+		"current_turn": session.CurrentTurn, "winner": session.Winner, "result_reason": session.ResultReason,
+		"restart_votes": session.RestartVotes, "deadline_at": session.LastActionAt.Add(blackjackIdleTimeout),
 		"revision": session.Revision,
 	}
+}
+
+func blackjackStateForPlayer(session blackjackSession, viewerID string) bson.M {
+	state := blackjackState(session)
+	if session.Status != "playing" {
+		return state
+	}
+	opponentID := session.PlayerIDs[0]
+	if viewerID == opponentID {
+		opponentID = session.PlayerIDs[1]
+	}
+	if session.Stood[opponentID] || blackjackScore(session.Hands[opponentID]) > 21 {
+		return state
+	}
+	hands := map[string][]string{}
+	for playerID, cards := range session.Hands {
+		if playerID == opponentID {
+			hands[playerID] = nil
+		} else {
+			hands[playerID] = append([]string(nil), cards...)
+		}
+	}
+	scores := bson.M{}
+	for playerID, score := range state["scores"].(bson.M) {
+		if playerID != opponentID {
+			scores[playerID] = score
+		}
+	}
+	state["hands"] = hands
+	state["scores"] = scores
+	state["hidden_card_counts"] = bson.M{opponentID: len(session.Hands[opponentID])}
+	return state
+}
+
+func resolveNaturalBlackjack(session *blackjackSession) bool {
+	first, second := session.PlayerIDs[0], session.PlayerIDs[1]
+	firstNatural := len(session.Hands[first]) == 2 && blackjackScore(session.Hands[first]) == 21
+	secondNatural := len(session.Hands[second]) == 2 && blackjackScore(session.Hands[second]) == 21
+	if !firstNatural && !secondNatural {
+		return false
+	}
+	session.Status = "finished"
+	session.CurrentTurn = ""
+	session.Stood[first], session.Stood[second] = true, true
+	session.ResultReason = "natural_blackjack"
+	switch {
+	case firstNatural && secondNatural:
+		session.Winner = "draw"
+	case firstNatural:
+		session.Winner = first
+	default:
+		session.Winner = second
+	}
+	return true
 }
 
 func applyBlackjackActionToSession(session *blackjackSession, userID, action string, now time.Time) bool {
@@ -161,6 +240,22 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 		if session.Status != "finished" && session.Status != "canceled" {
 			return false
 		}
+		if session.RestartVotes == nil {
+			session.RestartVotes = map[string]bool{}
+		}
+		if session.RestartVotes[userID] {
+			return false
+		}
+		session.RestartVotes[userID] = true
+		session.LastActionAt = now
+		session.Revision++
+		otherPlayer := session.PlayerIDs[0]
+		if userID == otherPlayer {
+			otherPlayer = session.PlayerIDs[1]
+		}
+		if !session.RestartVotes[otherPlayer] {
+			return true
+		}
 		previousStarter := session.StartingPlayer
 		if previousStarter == "" {
 			previousStarter = session.PlayerIDs[0]
@@ -170,7 +265,7 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 			nextStarter = session.PlayerIDs[1]
 		}
 		next := dealBlackjackSession(session.GameID, session.ConversationID, session.PlayerIDs, nextStarter, now)
-		next.Revision = session.Revision + 1
+		next.Revision = session.Revision
 		*session = next
 		return true
 	}
@@ -179,6 +274,7 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 			return false
 		}
 		session.Status, session.Winner, session.CurrentTurn = "canceled", "", ""
+		session.ResultReason = "canceled"
 		session.LastActionAt = now
 		session.Revision++
 		return true
@@ -211,6 +307,13 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 		session.Status = "finished"
 		session.CurrentTurn = ""
 		firstScore, secondScore := blackjackScore(session.Hands[first]), blackjackScore(session.Hands[second])
+		if firstScore > 21 || secondScore > 21 {
+			session.ResultReason = "bust"
+		} else if firstScore == secondScore {
+			session.ResultReason = "draw"
+		} else {
+			session.ResultReason = "higher_score"
+		}
 		switch {
 		case firstScore > 21 && secondScore > 21, firstScore == secondScore:
 			session.Winner = "draw"
@@ -232,6 +335,7 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 
 func (store *BlackjackStore) Create(ctx context.Context, gameID, conversationID, firstPlayerID, secondPlayerID string) (blackjackSession, error) {
 	session := newBlackjackSession(gameID, conversationID, firstPlayerID, secondPlayerID, time.Now())
+	session.PendingAcceptance = true
 	key := blackjackGameKey(gameID)
 	for attempts := 0; attempts < 3; attempts++ {
 		err := store.redis.Watch(ctx, func(tx *redis.Tx) error {
@@ -240,13 +344,60 @@ func (store *BlackjackStore) Create(ctx context.Context, gameID, conversationID,
 			} else if !errors.Is(err, redis.Nil) {
 				return err
 			}
-			return store.writeSession(ctx, tx, session, true, "game_start")
+			return store.writeSession(ctx, tx, session, true, "")
 		}, key)
 		if !errors.Is(err, redis.TxFailedErr) {
 			return session, err
 		}
 	}
 	return blackjackSession{}, redis.TxFailedErr
+}
+
+func (store *BlackjackStore) Activate(ctx context.Context, gameID string) (blackjackSession, error) {
+	key := blackjackGameKey(gameID)
+	var activated blackjackSession
+	for attempts := 0; attempts < 3; attempts++ {
+		err := store.redis.Watch(ctx, func(tx *redis.Tx) error {
+			value, err := tx.Get(ctx, key).Bytes()
+			if err != nil {
+				return err
+			}
+			var session blackjackSession
+			if err := json.Unmarshal(value, &session); err != nil {
+				return err
+			}
+			if !session.PendingAcceptance {
+				activated = session
+				return nil
+			}
+			session.PendingAcceptance = false
+			eventType := "game_start"
+			if session.Status == "finished" {
+				eventType = "game_result"
+			}
+			if err := store.writeSession(ctx, tx, session, false, eventType); err != nil {
+				return err
+			}
+			activated = session
+			return nil
+		}, key)
+		if !errors.Is(err, redis.TxFailedErr) {
+			return activated, err
+		}
+	}
+	return blackjackSession{}, redis.TxFailedErr
+}
+
+func (store *BlackjackStore) Delete(ctx context.Context, session blackjackSession) error {
+	_, err := store.redis.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Del(ctx, blackjackGameKey(session.GameID))
+		pipe.ZRem(ctx, blackjackDeadlineKey, session.GameID)
+		for _, playerID := range session.PlayerIDs {
+			pipe.ZRem(ctx, blackjackUserGamesKey(playerID), session.GameID)
+		}
+		return nil
+	})
+	return err
 }
 
 func (store *BlackjackStore) ApplyAction(ctx context.Context, userID, gameID, action string) (blackjackSession, error) {
@@ -262,7 +413,21 @@ func (store *BlackjackStore) ApplyAction(ctx context.Context, userID, gameID, ac
 			if err := json.Unmarshal(value, &session); err != nil {
 				return err
 			}
-			if !applyBlackjackActionToSession(&session, userID, action, time.Now()) {
+			if session.PendingAcceptance {
+				return errBlackjackInvalid
+			}
+			now := time.Now()
+			if session.Status == "playing" && !session.LastActionAt.Add(blackjackIdleTimeout).After(now) {
+				session.Status, session.Winner, session.CurrentTurn = "canceled", "", ""
+				session.ResultReason = "timeout"
+				session.Revision++
+				if err := store.writeSession(ctx, tx, session, false, "game_result"); err != nil {
+					return err
+				}
+				updated = session
+				return nil
+			}
+			if !applyBlackjackActionToSession(&session, userID, action, now) {
 				return errBlackjackInvalid
 			}
 			eventType := "game_state"
@@ -287,20 +452,20 @@ func (store *BlackjackStore) writeSession(ctx context.Context, tx *redis.Tx, ses
 	if err != nil {
 		return err
 	}
-	eventPayload, err := json.Marshal(blackjackEventEnvelope{
-		PlayerIDs: session.PlayerIDs,
-		Event: websocketEvent{
-			Type:    eventType,
-			Payload: blackjackState(session),
-		},
-	})
+	events := make(map[string]websocketEvent, len(session.PlayerIDs))
+	for _, playerID := range session.PlayerIDs {
+		events[playerID] = websocketEvent{Type: eventType, Payload: blackjackStateForPlayer(session, playerID)}
+	}
+	eventPayload, err := json.Marshal(blackjackEventEnvelope{Events: events})
 	if err != nil {
 		return err
 	}
 	_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.Set(ctx, blackjackGameKey(session.GameID), value, blackjackSessionTTL)
-		pipe.Publish(ctx, blackjackEventsChannel, eventPayload)
-		if session.Status == "playing" {
+		if eventType != "" {
+			pipe.Publish(ctx, blackjackEventsChannel, eventPayload)
+		}
+		if session.Status == "playing" && !session.PendingAcceptance {
 			pipe.ZAdd(ctx, blackjackDeadlineKey, redis.Z{Score: float64(session.LastActionAt.Add(blackjackIdleTimeout).UnixMilli()), Member: session.GameID})
 		} else {
 			pipe.ZRem(ctx, blackjackDeadlineKey, session.GameID)
@@ -346,7 +511,7 @@ func (store *BlackjackStore) ListForUser(ctx context.Context, userID string) ([]
 		if err := json.Unmarshal([]byte(text), &session); err != nil {
 			return nil, err
 		}
-		if session.Status == "playing" || session.Status == "finished" || session.Status == "canceled" {
+		if !session.PendingAcceptance && (session.Status == "playing" || session.Status == "finished" || session.Status == "canceled") {
 			sessions = append(sessions, session)
 		}
 	}
@@ -416,6 +581,7 @@ func (store *BlackjackStore) expireGame(ctx context.Context, gameID string, now 
 				return refreshErr
 			}
 			session.Status, session.Winner, session.CurrentTurn = "canceled", "", ""
+			session.ResultReason = "timeout"
 			session.Revision++
 			if err := store.writeSession(ctx, tx, session, false, "game_result"); err != nil {
 				return err

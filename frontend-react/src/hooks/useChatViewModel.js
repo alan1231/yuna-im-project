@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMediaCall } from './useMediaCall'
+import { applyBlackjackInviteResponse, shouldReplaceBlackjackGame } from '../utils/blackjack'
 import {
   addFriend as addFriendApi,
   chatQueryKeys,
@@ -155,6 +156,7 @@ export const useChatViewModel = (currentUser) => {
     Object.fromEntries(initialRooms.map((room) => [room.conversationId, []])),
   )
   const [gamesByConversation, setGamesByConversation] = useState({})
+  const [pendingGameAction, setPendingGameAction] = useState(null)
   const [userInput, setUserInput] = useState('')
   const [fileAttachment, setFileAttachment] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -166,6 +168,7 @@ export const useChatViewModel = (currentUser) => {
   const activeRoomIdRef = useRef(activeRoomId)
   const availableUsersRef = useRef(availableUsers)
   const socketRef = useRef(null)
+  const pendingGameActionRef = useRef(null)
   const connectRef = useRef(null)
   const reloadChatDataRef = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -336,8 +339,9 @@ export const useChatViewModel = (currentUser) => {
 
     setMessagesByConversation((currentMessages) => {
       const conversationMessages = currentMessages[conversationId] || []
+      const messagesWithGameResponse = applyBlackjackInviteResponse(conversationMessages, message)
 
-      const nextConversationMessages = [...conversationMessages, message].slice(-MAX_MESSAGES_PER_CONVERSATION)
+      const nextConversationMessages = [...messagesWithGameResponse, message].slice(-MAX_MESSAGES_PER_CONVERSATION)
       if (nextConversationMessages.length !== conversationMessages.length + 1) {
         messageKeysByConversationRef.current.set(
           conversationId,
@@ -532,17 +536,24 @@ export const useChatViewModel = (currentUser) => {
       case 'game_start':
       case 'game_state':
       case 'game_result':
+        if (pendingGameActionRef.current?.gameId === data.payload.game_id) {
+          pendingGameActionRef.current = null
+          setPendingGameAction(null)
+        }
         setGamesByConversation((games) => {
           const currentGame = games[data.payload.conversation_id]
-          if (
-            currentGame?.game_id === data.payload.game_id
-            && (currentGame.revision ?? 0) >= (data.payload.revision ?? 0)
-          ) return games
+          if (!shouldReplaceBlackjackGame(currentGame, data.payload)) return games
           return {
             ...games,
             [data.payload.conversation_id]: data.payload,
           }
         })
+        break
+      case 'game_action_error':
+        if (pendingGameActionRef.current?.actionId !== data.payload.action_id) break
+        pendingGameActionRef.current = null
+        setPendingGameAction(null)
+        setConnectionError(t(`chat.errors.${data.payload.code || 'invalid_action'}`))
         break
       case 'voice_offer':
       case 'voice_answer':
@@ -579,6 +590,8 @@ export const useChatViewModel = (currentUser) => {
 
     const socket = socketRef.current
     socketRef.current = null
+    pendingGameActionRef.current = null
+    setPendingGameAction(null)
     socket?.close()
     voiceCall.cleanup()
     videoCall.cleanup()
@@ -1064,8 +1077,25 @@ export const useChatViewModel = (currentUser) => {
   )
   const sendGameAction = useCallback((gameId, action) => {
     const socket = socketRef.current
-    if (!socket || socket.readyState !== WebSocket.OPEN) return
-    socket.send(JSON.stringify({ type: 'game_action', game_id: gameId, game_action: action }))
+    if (!socket || socket.readyState !== WebSocket.OPEN || pendingGameActionRef.current) return
+    const actionId = window.crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const pending = { gameId, action, actionId }
+    pendingGameActionRef.current = pending
+    setPendingGameAction(pending)
+    setConnectionError('')
+    socket.send(JSON.stringify({ type: 'game_action', game_id: gameId, game_action: action, action_id: actionId }))
+  }, [])
+
+  const closeGamePanel = useCallback((conversationId) => {
+    if (!conversationId) return
+    pendingGameActionRef.current = null
+    setPendingGameAction(null)
+    setGamesByConversation((games) => {
+      if (!games[conversationId]) return games
+      const nextGames = { ...games }
+      delete nextGames[conversationId]
+      return nextGames
+    })
   }, [])
 
   useEffect(() => {
@@ -1104,6 +1134,7 @@ export const useChatViewModel = (currentUser) => {
     activeRoomId,
     messages,
     game: gamesByConversation[activeRoom?.conversationId] || null,
+    pendingGameAction,
     userInput,
     setUserInput,
     fileAttachment,
@@ -1132,6 +1163,7 @@ export const useChatViewModel = (currentUser) => {
     sendGameInvite,
     respondToGameInvite,
     sendGameAction,
+    closeGamePanel,
     startVoiceCall: voiceCall.startCall,
     acceptVoiceCall: voiceCall.acceptCall,
     rejectVoiceCall: voiceCall.rejectCall,

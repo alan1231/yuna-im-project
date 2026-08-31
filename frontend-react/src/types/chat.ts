@@ -49,6 +49,7 @@ export type ChatMessage = {
   gameType?: string
   gameId?: string
   gameAction?: string
+  gameResponse?: string
 }
 
 export type VoiceCallState = {

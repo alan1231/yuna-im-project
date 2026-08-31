@@ -28,6 +28,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     activeRoomId,
     messages,
     game,
+    pendingGameAction,
     userInput,
     setUserInput,
     fileAttachment,
@@ -56,6 +57,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     sendGameInvite,
     respondToGameInvite,
     sendGameAction,
+    closeGamePanel,
     startVoiceCall,
     acceptVoiceCall,
     rejectVoiceCall,
@@ -177,7 +179,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
             onGameResponse={respondToGameInvite}
           />
 
-          <BlackjackPanel game={game} currentUserId={currentUser.id} onAction={sendGameAction} />
+          <BlackjackPanel game={game} currentUserId={currentUser.id} opponentOnline={typedActiveRoom.online} pendingAction={pendingGameAction} onAction={sendGameAction} onClose={() => closeGamePanel(typedActiveRoom.conversationId)} />
 
           <ChatComposer
             value={userInput}
