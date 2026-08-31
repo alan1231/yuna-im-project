@@ -16,8 +16,28 @@ import { useAuthStore } from './stores/authStore'
 import type { CurrentUser } from './types/chat'
 
 export default function App() {
+  const [showLaunchScreen, setShowLaunchScreen] = useState(true)
+  const [isLaunchLeaving, setIsLaunchLeaving] = useState(false)
+
+  useEffect(() => {
+    const leaveTimer = window.setTimeout(() => setIsLaunchLeaving(true), 1800)
+    const hideTimer = window.setTimeout(() => setShowLaunchScreen(false), 2200)
+    return () => {
+      window.clearTimeout(leaveTimer)
+      window.clearTimeout(hideTimer)
+    }
+  }, [])
+
   return (
     <div className="app-shell">
+      {showLaunchScreen ? (
+        <div className={`launch-screen launch-screen-app ${isLaunchLeaving ? 'launch-screen-leaving' : ''}`} aria-hidden="true">
+          <div className="launch-card">
+            <div className="launch-logo">N</div>
+            <p className="launch-title">NEON_GHOST</p>
+          </div>
+        </div>
+      ) : null}
       <Routes>
         <Route path="/" element={<ChatRoute />} />
         <Route path="/admin" element={<AdminConsole />} />
