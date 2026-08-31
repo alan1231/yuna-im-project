@@ -1741,13 +1741,46 @@
   }
 }
 
-/* The account screen can grow beyond a desktop viewport after the full logo is shown. */
-#app:has(.account-screen) {
-  height: auto;
-  min-height: 100svh;
-  overflow: visible;
+@media (min-width: 769px) {
+  /* The account screen can grow beyond a desktop viewport after the full logo is shown. */
+  #app:has(.account-screen) {
+    height: auto;
+    min-height: 100svh;
+    overflow: visible;
+  }
+
+  body:has(.account-screen) {
+    overflow-y: auto;
+  }
 }
 
-body:has(.account-screen) {
-  overflow-y: auto;
+@media (max-width: 768px) {
+  html:has(.account-screen),
+  body:has(.account-screen),
+  #app:has(.account-screen),
+  .app-shell:has(.account-screen) {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body:has(.account-screen) {
+    position: fixed;
+    inset: 0;
+  }
+
+  .account-screen {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .account-entry {
+    max-height: calc(100dvh - 76px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
