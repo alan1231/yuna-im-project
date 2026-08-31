@@ -4,7 +4,7 @@
 @import "tailwindcss/utilities" layer(utilities);
 
 :root {
-  --bg: #f6f7f9;
+  --bg: #141314;
   --surface: #ffffff;
   --text: #17202a;
   --muted: #697586;
@@ -37,6 +37,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100svh;
+  background: #141314;
 }
 
 button,
@@ -51,10 +52,12 @@ button {
 #app {
   height: 100svh;
   overflow: hidden;
+  background: #141314;
 }
 
 .app-shell {
   min-height: 100svh;
+  background: #141314;
 }
 
 .language-switcher {

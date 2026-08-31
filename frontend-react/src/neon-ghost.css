@@ -1782,9 +1782,12 @@ body,
   }
 
   .account-screen {
+    position: fixed;
+    inset: 0;
     height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
+    background-color: #141314;
   }
 
   .account-entry {
