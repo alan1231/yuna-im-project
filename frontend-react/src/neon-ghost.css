@@ -1717,6 +1717,7 @@
     min-height: 100dvh;
     overflow: hidden;
     overscroll-behavior: none;
+    touch-action: pan-y;
   }
 
   body:has(.chat-shell) {
@@ -1764,6 +1765,7 @@
     min-height: 100dvh;
     overflow: hidden;
     overscroll-behavior: none;
+    touch-action: pan-y;
   }
 
   body:has(.account-screen) {
