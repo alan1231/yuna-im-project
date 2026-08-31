@@ -45,10 +45,8 @@ docker compose up -d
 
 - [Current project status](PROJECT_STATUS.md)
 - [Project context](PROJECT_CONTEXT.md)
-- [Mobile API contract](docs/API_CONTRACT.md)
 - [Go chat backend context](backend-go/internal/chat/README.md)
 - [React frontend](frontend-react/README.md)
-- [Architecture decisions](docs/decisions)
 
 ## 分支與部署
 
