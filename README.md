@@ -52,7 +52,7 @@ docker compose up -d
 
 ## 分支與部署
 
-- `main`：雲端部署分支，Render 和 Vercel 從這個分支部署。
+- `main`：雲端部署分支，Vercel 從這個分支部署前端與 Go API。
 - `dev`：本地開發與測試分支。
 
 之後的修改都先從 `dev` 開始。開始前先把 `main` 同步到 `dev`，本機測試通過後才合併到 `main`，再 push `main` 觸發雲端部署：

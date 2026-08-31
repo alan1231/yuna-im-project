@@ -163,6 +163,16 @@ export const leaveGroup = (payload: { userId: string; groupId: string }) =>
 export const fetchConversations = (userId: string) =>
   requestJson<ConversationRecord[]>(urlWithUser('/conversations', userId))
 
+export const deleteConversation = (payload: { userId: string; conversationId: string }) =>
+  requestOk(`${API_URL}/conversations/delete`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      user_id: payload.userId,
+      conversation_id: payload.conversationId,
+    }),
+  })
+
 export const fetchMessages = (payload: { userId: string; conversationId: string }) => {
   const url = urlWithUser('/messages', payload.userId)
   url.searchParams.set('conversation_id', payload.conversationId)

@@ -46,10 +46,10 @@ export default function RoomList({
   currentUser,
   onSelect,
   onStartChat,
-  onAddFriend,
-  onDeleteFriend,
+  onStartChatByDisplayName,
+  onDeleteConversation,
   onCreateGroup,
-  onRefreshFriends,
+  onRefreshContacts,
   onRefreshUsers,
   onLogout,
 }) {
@@ -58,12 +58,11 @@ export default function RoomList({
   const [searchText, setSearchText] = useState('')
   const [contactSearchText, setContactSearchText] = useState('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isAddFriendModalOpen, setIsAddFriendModalOpen] = useState(false)
+  const [isAddChatModalOpen, setIsAddChatModalOpen] = useState(false)
   const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false)
   const [drawerView, setDrawerView] = useState('menu')
-  const [openFriendMenuId, setOpenFriendMenuId] = useState('')
-  const [addFriendSearch, setAddFriendSearch] = useState('')
-  const [friendInviteToast, setFriendInviteToast] = useState('')
+  const [openChatMenuId, setOpenChatMenuId] = useState('')
+  const [newChatSearch, setNewChatSearch] = useState('')
   const groupForm = useForm({
     resolver: zodResolver(groupFormSchema),
     defaultValues: {
@@ -92,30 +91,28 @@ export default function RoomList({
     })
   }, [availableUsers, normalizedSearch, rooms])
 
-  const friendRooms = useMemo(() => {
-    return rooms.filter((room) => room.isFriend && !room.isGroup)
+  const directRooms = useMemo(() => {
+    return rooms.filter((room) => !room.isGroup)
   }, [rooms])
 
-  const visibleFriendRooms = useMemo(() => {
-    if (!normalizedContactSearch) return friendRooms
+  const visibleDirectRooms = useMemo(() => {
+    if (!normalizedContactSearch) return directRooms
 
-    return friendRooms.filter((room) => {
+    return directRooms.filter((room) => {
       return room.name.toLowerCase().includes(normalizedContactSearch)
     })
-  }, [friendRooms, normalizedContactSearch])
+  }, [directRooms, normalizedContactSearch])
 
-  const normalizedAddFriendSearch = addFriendSearch.trim().toLowerCase()
+  const normalizedNewChatSearch = newChatSearch.trim().toLowerCase()
   const addableUsers = useMemo(() => {
-    const friendUserIds = new Set(
-      rooms.filter((room) => room.isFriend && !room.isGroup).map((room) => room.recipientId),
-    )
+    const directUserIds = new Set(rooms.filter((room) => !room.isGroup).map((room) => room.recipientId))
     return availableUsers
-      .filter((user) => !friendUserIds.has(user.user_id))
+      .filter((user) => !directUserIds.has(user.user_id))
       .filter(
         (user) =>
-          !normalizedAddFriendSearch || user.display_name.toLowerCase().includes(normalizedAddFriendSearch),
+          !normalizedNewChatSearch || user.display_name.toLowerCase().includes(normalizedNewChatSearch),
       )
-  }, [availableUsers, rooms, normalizedAddFriendSearch])
+  }, [availableUsers, rooms, normalizedNewChatSearch])
 
   const hasVisibleTargets = visibleRooms.length > 0 || visibleUsers.length > 0
 
@@ -126,32 +123,32 @@ export default function RoomList({
 
   const closeDrawer = () => {
     setIsMenuOpen(false)
-    setOpenFriendMenuId('')
+    setOpenChatMenuId('')
   }
 
   const openContacts = () => {
     setDrawerView('contacts')
-    onRefreshFriends()
+    onRefreshContacts()
   }
 
   const selectContact = (roomId) => {
     onSelect(roomId)
-    setOpenFriendMenuId('')
+    setOpenChatMenuId('')
     closeDrawer()
   }
 
-  const deleteContact = (roomId) => {
-    setOpenFriendMenuId('')
-    onDeleteFriend(roomId)
+  const deleteConversation = (roomId) => {
+    setOpenChatMenuId('')
+    onDeleteConversation(roomId)
   }
 
-  const handleAddFriend = async (displayName) => {
-    const success = await onAddFriend(displayName)
+  const handleStartChat = async (displayName) => {
+    const success = await onStartChatByDisplayName(displayName)
     if (!success) return
 
-    setIsAddFriendModalOpen(false)
-    setFriendInviteToast(t('chat.errors.friendInviteSent'))
-    window.setTimeout(() => setFriendInviteToast(''), 3200)
+    setIsAddChatModalOpen(false)
+    setNewChatSearch('')
+    closeDrawer()
   }
 
   const toggleGroupMember = (memberId) => {
@@ -238,32 +235,32 @@ export default function RoomList({
             </div>
 
             <nav className="drawer-contact-list" aria-label={t('chat.contactsLabel')}>
-              {visibleFriendRooms.map((friend) => (
-                <div key={friend.id} className="drawer-contact-row">
-                  <button type="button" className="drawer-contact-item" onClick={() => selectContact(friend.id)}>
-                    <span className="room-avatar">{friend.initials}</span>
+              {visibleDirectRooms.map((room) => (
+                <div key={room.id} className="drawer-contact-row">
+                  <button type="button" className="drawer-contact-item" onClick={() => selectContact(room.id)}>
+                    <span className="room-avatar">{room.initials}</span>
                     <span className="drawer-contact-content">
                       <span className="drawer-contact-topline">
-                        <strong>{friend.name}</strong>
-                        {friend.lastMessageAt ? <time>{friend.lastMessageAt}</time> : null}
+                        <strong>{room.name}</strong>
+                        {room.lastMessageAt ? <time>{room.lastMessageAt}</time> : null}
                       </span>
                       <span className="drawer-contact-bottomline">
-                        <span className={`presence-text ${friend.online ? 'presence-online' : ''}`}>
-                          {formatPresence(friend, t, i18n.language)}
+                        <span className={`presence-text ${room.online ? 'presence-online' : ''}`}>
+                          {formatPresence(room, t, i18n.language)}
                         </span>
-                        {friend.lastMessageIsSelf ? (
+                        {room.lastMessageIsSelf ? (
                           <span
-                            className={`read-checks ${friend.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                            aria-label={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                            title={friend.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                            className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
+                            aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                            title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
                           >
                             <span />
-                            {friend.lastMessageReadAt ? <span /> : null}
+                            {room.lastMessageReadAt ? <span /> : null}
                           </span>
                         ) : null}
-                        {!friend.lastMessageIsSelf && friend.unreadCount ? (
+                        {!room.lastMessageIsSelf && room.unreadCount ? (
                           <span className="unread-badge">
-                            {friend.unreadCount > 99 ? '99+' : friend.unreadCount}
+                            {room.unreadCount > 99 ? '99+' : room.unreadCount}
                           </span>
                         ) : null}
                       </span>
@@ -273,29 +270,29 @@ export default function RoomList({
                     <button
                       type="button"
                       className="drawer-contact-menu-button"
-                      aria-label={t('chat.friendActionsLabel', { name: friend.name })}
-                      aria-expanded={openFriendMenuId === friend.id}
+                      aria-label={t('chat.chatActionsLabel', { name: room.name })}
+                      aria-expanded={openChatMenuId === room.id}
                       onClick={(event) => {
                         event.stopPropagation()
-                        setOpenFriendMenuId((currentId) => (currentId === friend.id ? '' : friend.id))
+                        setOpenChatMenuId((currentId) => (currentId === room.id ? '' : room.id))
                       }}
                     >
                       ...
                     </button>
-                    {openFriendMenuId === friend.id ? (
+                    {openChatMenuId === room.id ? (
                       <div className="drawer-contact-menu">
-                        <button type="button" onClick={() => selectContact(friend.id)}>
+                        <button type="button" onClick={() => selectContact(room.id)}>
                           {t('chat.startChat')}
                         </button>
-                        <button type="button" className="danger-menu-item" onClick={() => deleteContact(friend.id)}>
-                          {t('chat.deleteFriend')}
+                        <button type="button" className="danger-menu-item" onClick={() => deleteConversation(room.id)}>
+                          {t('chat.deleteConversation')}
                         </button>
                       </div>
                     ) : null}
                   </div>
                 </div>
               ))}
-              {!visibleFriendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
+              {!visibleDirectRooms.length ? <p className="drawer-empty">{t('chat.noChats')}</p> : null}
             </nav>
 
             <div className="drawer-contact-footer">
@@ -304,32 +301,32 @@ export default function RoomList({
                 className="drawer-add-toggle"
                 onClick={() => {
                   onRefreshUsers?.()
-                  setIsAddFriendModalOpen(true)
+                  setIsAddChatModalOpen(true)
                 }}
               >
-                {t('chat.addContact')}
+                {t('chat.newChat')}
               </button>
             </div>
           </>
         )}
       </aside>
 
-      {isAddFriendModalOpen ? (
+      {isAddChatModalOpen ? (
         <div
           className="modal-backdrop"
           role="presentation"
           onClick={(event) => {
-            if (event.target === event.currentTarget) setIsAddFriendModalOpen(false)
+            if (event.target === event.currentTarget) setIsAddChatModalOpen(false)
           }}
         >
           <div className="add-contact-modal">
             <div className="modal-header">
-              <h3>{t('chat.addContact')}</h3>
+              <h3>{t('chat.newChat')}</h3>
               <button
                 type="button"
                 className="modal-close"
-                aria-label={t('chat.addContactClose')}
-                onClick={() => setIsAddFriendModalOpen(false)}
+                aria-label={t('chat.newChatClose')}
+                onClick={() => setIsAddChatModalOpen(false)}
               >
                 ×
               </button>
@@ -337,12 +334,12 @@ export default function RoomList({
             <input
               className="contact-search-input"
               type="search"
-              value={addFriendSearch}
-              placeholder={t('chat.addFriendPlaceholder')}
+              value={newChatSearch}
+              placeholder={t('chat.newChatPlaceholder')}
               autoComplete="off"
-              onChange={(event) => setAddFriendSearch(event.target.value)}
+              onChange={(event) => setNewChatSearch(event.target.value)}
             />
-            <nav className="add-contact-user-list" aria-label={t('chat.addContact')}>
+            <nav className="add-contact-user-list" aria-label={t('chat.newChat')}>
               {addableUsers.length === 0 ? (
                 <p className="drawer-empty">{t('chat.noUsersToAdd')}</p>
               ) : (
@@ -351,7 +348,7 @@ export default function RoomList({
                     type="button"
                     key={user.user_id}
                     className="add-contact-user-row"
-                    onClick={() => handleAddFriend(user.display_name)}
+                    onClick={() => handleStartChat(user.display_name)}
                   >
                     <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
                     <span className="add-contact-user-name">{user.display_name}</span>
@@ -364,8 +361,6 @@ export default function RoomList({
           </div>
         </div>
       ) : null}
-
-      {friendInviteToast ? <div className="friend-invite-toast" role="status">{friendInviteToast}</div> : null}
 
       {isCreateGroupModalOpen ? (
         <div
@@ -402,23 +397,23 @@ export default function RoomList({
             ) : null}
 
             <div className="group-member-picker" aria-label={t('chat.groupMembers')}>
-              {friendRooms.map((friend) => {
-                const isSelected = selectedGroupMemberIds.includes(friend.recipientId)
+              {availableUsers.map((user) => {
+                const isSelected = selectedGroupMemberIds.includes(user.user_id)
 
                 return (
                   <label
-                    key={friend.id}
+                    key={user.user_id}
                     className={`group-member-option ${isSelected ? 'group-member-selected' : ''}`}
                   >
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => toggleGroupMember(friend.recipientId)}
+                      onChange={() => toggleGroupMember(user.user_id)}
                     />
-                    <span className="room-avatar">{friend.initials}</span>
+                    <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
                     <span className="group-member-content">
-                      <strong>{friend.name}</strong>
-                      <span>{formatPresence(friend, t, i18n.language)}</span>
+                      <strong>{user.display_name}</strong>
+                      <span>{formatPresence({ online: user.online, lastSeen: user.last_seen }, t, i18n.language)}</span>
                     </span>
                     <span className="group-member-check" aria-hidden="true">
                       {isSelected ? '✓' : '+'}
@@ -426,7 +421,7 @@ export default function RoomList({
                   </label>
                 )
               })}
-              {!friendRooms.length ? <p className="drawer-empty">{t('chat.noFriends')}</p> : null}
+              {!availableUsers.length ? <p className="drawer-empty">{t('chat.noUsersToAdd')}</p> : null}
             </div>
 
             {error ? <p className="room-error">{error}</p> : null}

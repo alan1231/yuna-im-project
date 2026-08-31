@@ -24,6 +24,11 @@ type deleteFriendRequest struct {
 	FriendID string `json:"friend_id"`
 }
 
+type deleteConversationRequest struct {
+	UserID         string `json:"user_id"`
+	ConversationID string `json:"conversation_id"`
+}
+
 type friendResponse struct {
 	UserID      string    `json:"user_id" bson:"user_id"`
 	FriendID    string    `json:"friend_id" bson:"friend_id"`

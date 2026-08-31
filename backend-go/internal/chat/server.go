@@ -29,6 +29,7 @@ const (
 	adminsName          = "admins"
 	friendsName         = "friends"
 	friendRequestsName  = "friend_requests"
+	deletedChatsName    = "deleted_conversations"
 	groupsName          = "groups"
 	voiceSignalsChannel = "yuna-im:voice-signals"
 )
@@ -1258,9 +1259,13 @@ func handleMessages(w http.ResponseWriter, r *http.Request, client *mongo.Client
 	markConversationRead(r.Context(), client, userID, conversationID)
 
 	collection := client.Database(databaseName).Collection(collectionName)
+	filter := bson.M{"conversation_id": conversationID}
+	if deletedAt, ok := loadDeletedConversationTime(r.Context(), client, userID, conversationID); ok {
+		filter["time"] = bson.M{"$gt": deletedAt}
+	}
 	cursor, err := collection.Find(
 		r.Context(),
-		bson.M{"conversation_id": conversationID},
+		filter,
 		options.Find().SetSort(bson.D{{Key: "time", Value: -1}}).SetLimit(100),
 	)
 	if err != nil {
@@ -1288,6 +1293,17 @@ func chronologicalMessages(messages []bson.M) {
 	slices.Reverse(messages)
 }
 
+func loadDeletedConversationTime(ctx context.Context, client *mongo.Client, userID string, conversationID string) (time.Time, bool) {
+	var row struct {
+		DeletedAt time.Time `bson:"deleted_at"`
+	}
+	err := client.Database(databaseName).Collection(deletedChatsName).FindOne(ctx, bson.M{
+		"user_id":         userID,
+		"conversation_id": conversationID,
+	}).Decode(&row)
+	return row.DeletedAt, err == nil
+}
+
 func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	applyCORS(w)
 
@@ -1306,6 +1322,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		http.Error(w, "user_id is required", http.StatusBadRequest)
 		return
 	}
+	deletedConversations := loadDeletedConversationTimes(r.Context(), client, userID)
 
 	collection := client.Database(databaseName).Collection(collectionName)
 	cursor, err := collection.Find(
@@ -1336,7 +1353,8 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		}
 
 		conversationID, _ := message["conversation_id"].(string)
-		if conversationID == "" || seen[conversationID] {
+		deletedAt, isDeleted := deletedConversations[conversationID]
+		if conversationID == "" || seen[conversationID] || (isDeleted && !messageTime(message["time"]).After(deletedAt)) {
 			continue
 		}
 
@@ -1392,6 +1410,69 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 	if err := json.NewEncoder(w).Encode(conversations); err != nil {
 		log.Printf("對話清單回應 JSON 失敗: %v", err)
 	}
+}
+
+func loadDeletedConversationTimes(ctx context.Context, client *mongo.Client, userID string) map[string]time.Time {
+	cursor, err := client.Database(databaseName).Collection(deletedChatsName).Find(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return map[string]time.Time{}
+	}
+	defer cursor.Close(ctx)
+
+	deletedAtByConversation := map[string]time.Time{}
+	for cursor.Next(ctx) {
+		var row struct {
+			ConversationID string    `bson:"conversation_id"`
+			DeletedAt      time.Time `bson:"deleted_at"`
+		}
+		if err := cursor.Decode(&row); err == nil && row.ConversationID != "" {
+			deletedAtByConversation[row.ConversationID] = row.DeletedAt
+		}
+	}
+	return deletedAtByConversation
+}
+
+func handleDeleteConversation(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	applyCORS(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req deleteConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	req.UserID = authenticatedUserID(r)
+	req.ConversationID = strings.TrimSpace(req.ConversationID)
+	if req.UserID == "" || req.ConversationID == "" {
+		http.Error(w, "user_id and conversation_id are required", http.StatusBadRequest)
+		return
+	}
+	if !conversationIncludesUser(r.Context(), client, req.ConversationID, req.UserID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	_, err := client.Database(databaseName).Collection(deletedChatsName).UpdateOne(
+		r.Context(),
+		bson.M{"user_id": req.UserID, "conversation_id": req.ConversationID},
+		bson.M{"$set": bson.M{"user_id": req.UserID, "conversation_id": req.ConversationID, "deleted_at": time.Now()}},
+		options.Update().SetUpsert(true),
+	)
+	if err != nil {
+		log.Printf("刪除聊天紀錄寫入失敗: %v", err)
+		http.Error(w, "delete conversation failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request, checkDependencies func(context.Context) error) {
@@ -1784,6 +1865,9 @@ func Run(cfg Config) error {
 	}))
 	mux.HandleFunc("/conversations", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleConversations(w, r, client)
+	}))
+	mux.HandleFunc("/conversations/delete", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
+		handleDeleteConversation(w, r, client)
 	}))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		handleHealth(w, r, healthCheck)

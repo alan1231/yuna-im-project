@@ -44,8 +44,8 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     setVideoLocalElement,
     selectRoom,
     startChatWithUser,
-    addFriend,
-    deleteFriend,
+    startChatByDisplayName,
+    deleteConversation,
     createGroup,
     leaveGroup,
     attachFile,
@@ -122,10 +122,10 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         currentUser={currentUser}
         onSelect={openRoom}
         onStartChat={openUserChat}
-        onAddFriend={addFriend}
-        onDeleteFriend={deleteFriend}
+        onStartChatByDisplayName={startChatByDisplayName}
+        onDeleteConversation={deleteConversation}
         onCreateGroup={createGroup}
-        onRefreshFriends={refreshFriends}
+        onRefreshContacts={refreshUsers}
         onRefreshUsers={refreshUsers}
         onLogout={onLogout}
       />

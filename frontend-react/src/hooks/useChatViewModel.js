@@ -4,25 +4,21 @@ import { useTranslation } from 'react-i18next'
 import { useMediaCall } from './useMediaCall'
 import { applyBlackjackInviteResponse, shouldReplaceBlackjackGame } from '../utils/blackjack'
 import {
-  addFriend as addFriendApi,
   chatQueryKeys,
   createGroup as createGroupApi,
   createWebSocketTicket,
-  deleteFriend as deleteFriendApi,
+  deleteConversation as deleteConversationApi,
   fetchConversations,
-  fetchFriendRequests,
   fetchFriends,
   fetchGroups,
   fetchMessages,
   fetchUsers,
   leaveGroup as leaveGroupApi,
-  respondFriendRequest as respondFriendRequestApi,
   wakeBackend as wakeBackendApi,
 } from '../api/chatApi'
 import { WS_URL } from '../config/api'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
-const MAX_HANDLED_REQUEST_IDS = 100
 
 const getConversationId = (userId, recipientId) => {
   const [firstId, secondId] = [userId, recipientId].sort()
@@ -178,7 +174,6 @@ export const useChatViewModel = (currentUser) => {
   const voiceRemoteRef = useRef(null)
   const videoRemoteRef = useRef(null)
   const videoLocalRef = useRef(null)
-  const handledRequestIdsRef = useRef(new Set())
   const handledGroupIdsRef = useRef(new Set())
   const loadedConversationIdsRef = useRef(new Set())
   const messageKeysByConversationRef = useRef(new Map())
@@ -416,36 +411,6 @@ export const useChatViewModel = (currentUser) => {
     )
   }, [currentUser.id, updateRoom])
 
-  const rememberHandledRequest = useCallback((requestId) => {
-    const handledRequestIds = handledRequestIdsRef.current
-    handledRequestIds.add(requestId)
-    if (handledRequestIds.size <= MAX_HANDLED_REQUEST_IDS) return
-
-    const oldestRequestId = handledRequestIds.values().next().value
-    handledRequestIds.delete(oldestRequestId)
-  }, [])
-
-  const respondFriendRequest = useCallback(async (requestId, accept) => {
-    await respondFriendRequestApi({
-      userId: currentUser.id,
-      requestId,
-      accept,
-    })
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: chatQueryKeys.friendRequests(currentUser.id) }),
-      queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
-      queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
-    ])
-  }, [currentUser.id, queryClient])
-
-  const handleFriendRequest = useCallback(async (request) => {
-    if (!request?.request_id || handledRequestIdsRef.current.has(request.request_id)) return
-
-    rememberHandledRequest(request.request_id)
-    const accepted = window.confirm(t('chat.confirmFriendRequest', { name: request.from_display_name }))
-    await respondFriendRequest(request.request_id, accepted)
-  }, [rememberHandledRequest, respondFriendRequest, t])
-
   const activateRoom = useCallback((room) => {
     appendRoom(room)
     roomsRef.current = sortRooms([...roomsRef.current.filter((item) => item.id !== room.id), room])
@@ -521,9 +486,6 @@ export const useChatViewModel = (currentUser) => {
       case 'message':
         appendMessage(data.payload)
         break
-      case 'friend_request':
-        await handleFriendRequest(data.payload)
-        break
       case 'friend_added':
         appendRoom(createFriendRoom(currentUser.id, data.payload, t))
         break
@@ -575,7 +537,6 @@ export const useChatViewModel = (currentUser) => {
     appendRoom,
     applyReadReceipt,
     currentUser.id,
-    handleFriendRequest,
     handleGroupAdded,
     routeCallSignal,
     t,
@@ -857,43 +818,15 @@ export const useChatViewModel = (currentUser) => {
     }
   }, [currentUser.id, initialRooms, loadConversations, loadGroups, queryClient, sendActiveConversation, t, touchConversationCache])
 
-  const loadFriendRequests = useCallback(async () => {
-    try {
-      const requests = await queryClient.fetchQuery({
-        queryKey: chatQueryKeys.friendRequests(currentUser.id),
-        queryFn: () => fetchFriendRequests(currentUser.id),
-      })
-      for (const request of requests) {
-        if (handledRequestIdsRef.current.has(request.request_id)) continue
-        rememberHandledRequest(request.request_id)
-
-        const accepted = window.confirm(t('chat.confirmFriendRequest', { name: request.from_display_name }))
-        await respondFriendRequest(request.request_id, accepted)
-      }
-    } catch (error) {
-      console.error('Friend request load failed:', error)
-    }
-  }, [currentUser.id, queryClient, rememberHandledRequest, respondFriendRequest, t])
-
-  useEffect(() => {
-    loadFriendRequests()
-    const timer = window.setInterval(() => {
-      loadFriendRequests()
-    }, 15_000)
-    return () => window.clearInterval(timer)
-  }, [loadFriendRequests])
-
   const reloadChatData = useCallback(async () => {
     await loadUsers()
     await loadFriends()
     await loadGroups()
     await loadConversations()
-    await loadFriendRequests()
     await loadMessagesForRoom(getActiveRoom())
   }, [
     getActiveRoom,
     loadConversations,
-    loadFriendRequests,
     loadFriends,
     loadGroups,
     loadMessagesForRoom,
@@ -916,7 +849,6 @@ export const useChatViewModel = (currentUser) => {
         queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
         queryClient.invalidateQueries({ queryKey: chatQueryKeys.groups(currentUser.id) }),
         queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friendRequests(currentUser.id) }),
       ])
       await reloadChatData()
       reconnect()
@@ -965,59 +897,84 @@ export const useChatViewModel = (currentUser) => {
     window.setTimeout(sendActiveConversation, 0)
   }, [appendRoom, currentUser.id, loadMessagesForRoom, sendActiveConversation, t, touchConversationCache])
 
-  const addFriend = useCallback(async (displayName) => {
+  const startChatByDisplayName = useCallback(async (displayName) => {
     const name = displayName.trim()
-    if (!name) return
-
-    setRoomError('')
-
-    try {
-      await addFriendApi({
-        userId: currentUser.id,
-        displayName: name,
-      })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
-      ])
-      setRoomError('')
-      return true
-    } catch (error) {
-      console.error('Add friend failed:', error)
-      const status = error && error.status
-      setRoomError(status === 404 ? t('chat.errors.friendNotFound') : t('chat.errors.addFriendFailed'))
+    if (!name) {
+      setRoomError(t('chat.errors.chatNameRequired'))
       return false
     }
-  }, [currentUser.id, queryClient, t])
 
-  const deleteFriend = useCallback(async (roomId) => {
+    setRoomError('')
+
+    let users = availableUsersRef.current
+    if (!users.length) {
+      try {
+        users = await queryClient.fetchQuery({
+          queryKey: chatQueryKeys.users(currentUser.id),
+          queryFn: () => fetchUsers(currentUser.id),
+        })
+        availableUsersRef.current = users
+        setAvailableUsers(users)
+      } catch (error) {
+        console.error('User list load failed:', error)
+        setRoomError(t('chat.errors.usersFailed'))
+        return false
+      }
+    }
+
+    const user = users.find((item) => item.display_name.toLowerCase() === name.toLowerCase())
+    if (!user) {
+      setRoomError(t('chat.errors.userNotFound'))
+      return false
+    }
+    startChatWithUser(user)
+    return true
+  }, [currentUser.id, queryClient, startChatWithUser, t])
+
+  const deleteConversation = useCallback(async (roomId) => {
     const room = roomsRef.current.find((item) => item.id === roomId)
-    if (!room?.isFriend) return
-    if (!window.confirm(t('chat.confirmDeleteFriend', { name: room.name }))) return
+    if (!room?.conversationId || room.isGroup) return
+    if (!window.confirm(t('chat.confirmDeleteConversation', { name: room.name }))) return
+
+    const removeRoom = () => {
+      const nextRooms = roomsRef.current.filter((item) => item.id !== room.id)
+      roomsRef.current = sortRooms(nextRooms)
+      setRooms(roomsRef.current)
+      setMessagesByConversation((currentMessages) => {
+        const nextMessages = { ...currentMessages }
+        delete nextMessages[room.conversationId]
+        return nextMessages
+      })
+      loadedConversationIdsRef.current.delete(room.conversationId)
+      messageKeysByConversationRef.current.delete(room.conversationId)
+      conversationCacheAccessRef.current.delete(room.conversationId)
+
+      const fallbackRoom = roomsRef.current[0]
+      activeRoomIdRef.current = fallbackRoom?.id || ''
+      setActiveRoomId(fallbackRoom?.id || '')
+      setUserInput('')
+      setFileAttachment(null)
+    }
+
+    if (!room.lastMessageTimeMs) {
+      removeRoom()
+      return
+    }
 
     setRoomError('')
     try {
-      await deleteFriendApi({
+      await deleteConversationApi({
         userId: currentUser.id,
-        friendId: room.recipientId,
+        conversationId: room.conversationId,
       })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.friends(currentUser.id) }),
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) }),
-      ])
-
-      const nextRooms = roomsRef.current.map((item) =>
-        item.id === room.id ? { ...item, isFriend: false, description: t('chat.conversation') } : item,
-      )
-      roomsRef.current = sortRooms(nextRooms)
-      setRooms(roomsRef.current)
-      await loadFriends()
+      await queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations(currentUser.id) })
+      removeRoom()
       await loadConversations()
     } catch (error) {
-      console.error('Delete friend failed:', error)
-      setRoomError(t('chat.errors.deleteFriendFailed'))
+      console.error('Delete conversation failed:', error)
+      setRoomError(t('chat.errors.deleteConversationFailed'))
     }
-  }, [currentUser.id, loadConversations, loadFriends, queryClient, t])
+  }, [currentUser.id, loadConversations, queryClient, t])
 
   const attachFile = (file) => {
     setFileAttachment(file)
@@ -1118,8 +1075,6 @@ export const useChatViewModel = (currentUser) => {
       if (!isActive) return
       await loadConversations()
       if (!isActive) return
-      await loadFriendRequests()
-      if (!isActive) return
       await loadMessagesForRoom(getActiveRoom())
       if (!isActive) return
       connect()
@@ -1158,8 +1113,8 @@ export const useChatViewModel = (currentUser) => {
     setVideoLocalElement,
     selectRoom,
     startChatWithUser,
-    addFriend,
-    deleteFriend,
+    startChatByDisplayName,
+    deleteConversation,
     createGroup,
     leaveGroup,
     attachFile,
