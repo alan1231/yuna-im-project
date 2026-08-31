@@ -1,4 +1,12 @@
 /* Neon Ghost visual system: account, navigation, chat, calls, and mobile overrides. */
+:root,
+html,
+body,
+#app,
+.app-shell {
+  background: #141314;
+}
+
 /* Account landing screen. */
 .account-screen {
   position: relative;
