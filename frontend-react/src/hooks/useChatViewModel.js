@@ -530,17 +530,19 @@ export const useChatViewModel = (currentUser) => {
         applyReadReceipt(data.payload)
         break
       case 'game_start':
-        setGamesByConversation((games) => ({
-          ...games,
-          [data.payload.conversation_id]: data.payload,
-        }))
-        break
       case 'game_state':
       case 'game_result':
-        setGamesByConversation((games) => ({
-          ...games,
-          [data.payload.conversation_id]: data.payload,
-        }))
+        setGamesByConversation((games) => {
+          const currentGame = games[data.payload.conversation_id]
+          if (
+            currentGame?.game_id === data.payload.game_id
+            && (currentGame.revision ?? 0) >= (data.payload.revision ?? 0)
+          ) return games
+          return {
+            ...games,
+            [data.payload.conversation_id]: data.payload,
+          }
+        })
         break
       case 'voice_offer':
       case 'voice_answer':

@@ -96,7 +96,7 @@ func TestHandleHealthChecksDependencies(t *testing.T) {
 }
 
 func TestDeliverVoiceSignalTargetsRecipient(t *testing.T) {
-	hub := newChangeStreamHub(nil)
+	hub := newChangeStreamHub(nil, nil)
 	recipient := newWSClient("user_b", "dm:user_a:user_b")
 	other := newWSClient("user_c", "dm:user_a:user_c")
 	hub.register(recipient)
