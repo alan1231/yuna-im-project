@@ -508,7 +508,7 @@ func listUsers(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	}
 }
 
-func handleFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func handleFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client, hub *changeStreamHub) {
 	applyCORS(w)
 
 	if r.Method == http.MethodOptions {
@@ -520,7 +520,7 @@ func handleFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client)
 	case http.MethodGet:
 		listFriends(w, r, client)
 	case http.MethodPost:
-		createFriend(w, r, client)
+		createFriend(w, r, client, hub)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -571,7 +571,7 @@ func listFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	}
 }
 
-func createFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+func createFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client, hub *changeStreamHub) {
 	var req createFriendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -627,11 +627,30 @@ func createFriend(w http.ResponseWriter, r *http.Request, client *mongo.Client) 
 		"status":       "pending",
 	}
 	update := bson.M{"$setOnInsert": request}
-	_, err = requests.UpdateOne(r.Context(), filter, update, options.Update().SetUpsert(true))
+	result, err := requests.UpdateOne(r.Context(), filter, update, options.Update().SetUpsert(true))
 	if err != nil {
 		log.Printf("好友邀請寫入 MongoDB 失敗: %v", err)
 		http.Error(w, "create friend request failed", http.StatusInternalServerError)
 		return
+	}
+	if result.UpsertedCount == 0 {
+		if err := requests.FindOne(r.Context(), filter).Decode(&request); err != nil {
+			log.Printf("既有好友邀請讀取失敗: %v", err)
+			http.Error(w, "create friend request failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if hub != nil {
+		hub.sendToUser(request.ToUserID, websocketEvent{Type: "friend_request", Payload: bson.M{
+			"request_id":        request.RequestID,
+			"from_user_id":      request.FromUserID,
+			"from_display_name": request.FromDisplayName,
+			"to_user_id":        request.ToUserID,
+			"to_display_name":   request.ToDisplayName,
+			"status":            request.Status,
+			"created_at":        request.CreatedAt,
+		}})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1746,7 +1765,7 @@ func Run(cfg Config) error {
 		handleUsers(w, r, client)
 	}))
 	mux.HandleFunc("/friends", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
-		handleFriends(w, r, client)
+		handleFriends(w, r, client, hub)
 	}))
 	mux.HandleFunc("/friends/delete", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleDeleteFriend(w, r, client)
