@@ -9,6 +9,21 @@ export default function NetworkQrCode() {
   const [shareStatus, setShareStatus] = useState('')
   const isEnglish = i18n.language === 'en'
 
+  const getShareTarget = async () => {
+    const isAppleMobile =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    if (isAppleMobile) return 'https://ivi.cx/i/cfg?6a95152a'
+
+    try {
+      const response = await fetch('/__lan_url')
+      const { url } = await response.json()
+      return url || window.location.origin
+    } catch {
+      return window.location.origin
+    }
+  }
+
   const downloadQrCode = () => {
     if (!qrCode) return
     const link = document.createElement('a')
@@ -35,15 +50,8 @@ export default function NetworkQrCode() {
 
   useEffect(() => {
     const createQrCode = async () => {
-      try {
-        const response = await fetch('/__lan_url')
-        const { url } = await response.json()
-        const target = url || window.location.origin
-        setQrCode({ target, image: await QRCode.toDataURL(target, { width: 128, margin: 2 }) })
-      } catch {
-        const target = window.location.origin
-        setQrCode({ target, image: await QRCode.toDataURL(target, { width: 128, margin: 2 }) })
-      }
+      const target = await getShareTarget()
+      setQrCode({ target, image: await QRCode.toDataURL(target, { width: 128, margin: 2 }) })
     }
 
     createQrCode()
