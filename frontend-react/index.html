@@ -3,13 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/neon-ghost-logo.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#141314" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Neon Ghost" />
     <meta name="google" content="notranslate" />
     <title>Neon Ghost</title>
+    <style>
+      html,
+      body,
+      #app {
+        background: #141314;
+      }
+
+      .launch-screen {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #e5e1e2;
+        background:
+          radial-gradient(circle at 50% 40%, rgba(113, 216, 200, .18), transparent 34%),
+          radial-gradient(#454652 1px, transparent 1px),
+          #141314;
+        background-size: auto, 8px 8px, auto;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      .launch-card {
+        display: grid;
+        place-items: center;
+        gap: 14px;
+        text-align: center;
+      }
+
+      .launch-logo {
+        width: 112px;
+        height: 112px;
+        display: grid;
+        place-items: center;
+        color: #71d8c8;
+        background: #1a1b26;
+        border: 3px solid #000;
+        border-radius: 26px;
+        box-shadow: 6px 6px 0 #000;
+        font-size: 52px;
+        font-weight: 900;
+      }
+
+      .launch-title {
+        margin: 0;
+        color: #d4bbff;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: -.04em;
+      }
+    </style>
   </head>
   <body style="background:#141314">
-    <div id="app" class="notranslate" translate="no" style="background:#141314"></div>
+    <div id="app" class="notranslate" translate="no" style="background:#141314">
+      <div class="launch-screen" aria-label="Launching Neon Ghost">
+        <div class="launch-card">
+          <div class="launch-logo">N</div>
+          <p class="launch-title">NEON_GHOST</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

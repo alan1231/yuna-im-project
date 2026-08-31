@@ -1,0 +1,16 @@
+{
+  "name": "Neon Ghost",
+  "short_name": "Neon Ghost",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#141314",
+  "theme_color": "#141314",
+  "icons": [
+    {
+      "src": "/neon-ghost-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
