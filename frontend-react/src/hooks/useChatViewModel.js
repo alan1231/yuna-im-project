@@ -876,12 +876,12 @@ export const useChatViewModel = (currentUser) => {
   }, [currentUser.id, queryClient, rememberHandledRequest, respondFriendRequest, t])
 
   useEffect(() => {
-    if (!isConnected) return undefined
+    loadFriendRequests()
     const timer = window.setInterval(() => {
       loadFriendRequests()
     }, 15_000)
     return () => window.clearInterval(timer)
-  }, [isConnected, loadFriendRequests])
+  }, [loadFriendRequests])
 
   const reloadChatData = useCallback(async () => {
     await loadUsers()
