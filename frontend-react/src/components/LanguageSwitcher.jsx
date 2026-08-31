@@ -10,6 +10,7 @@ export default function LanguageSwitcher() {
 
   const switchLanguage = (language) => {
     i18n.changeLanguage(language)
+    document.documentElement.lang = language
     window.localStorage.setItem('yuna-im-locale', language)
   }
 

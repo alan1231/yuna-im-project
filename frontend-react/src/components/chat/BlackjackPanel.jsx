@@ -12,6 +12,10 @@ export default function BlackjackPanel({ game, currentUserId, onAction }) {
   const isPlaying = game.status === 'playing'
   const handScore = game.scores?.[currentUserId] ?? 0
   const opponentScore = game.scores?.[opponentId] ?? 0
+  const startingPlayerId = game.starting_player || playerIds[0]
+  const startingPlayerLabel = startingPlayerId === currentUserId
+    ? t('chat.blackjackYouStart')
+    : t('chat.blackjackOpponentStarts')
   const statusLabel = game.status === 'finished'
     ? t('chat.blackjackFinished')
     : game.status === 'canceled'
@@ -64,7 +68,7 @@ export default function BlackjackPanel({ game, currentUserId, onAction }) {
       <div className="blackjack-table">
         {renderHand(opponentHand, t('chat.blackjackOpponent'), opponentScore, isPlaying && !isMyTurn, 'opponent')}
         <div className="blackjack-table-center" aria-hidden="true">
-          <span className="blackjack-rule">BLACKJACK PAYS 3 TO 2</span>
+          <span className="blackjack-rule">{startingPlayerLabel}</span>
           <div className="blackjack-deck"><i /><i /><i /></div>
           <span className="blackjack-turn-marker">{isMyTurn ? 'YOUR MOVE' : '21'}</span>
         </div>

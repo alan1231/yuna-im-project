@@ -34,6 +34,38 @@ func TestBlackjackScoreTreatsAceAsOneWhenNeeded(t *testing.T) {
 	}
 }
 
+func TestBlackjackHitKeepsTurnUntilPlayerStands(t *testing.T) {
+	now := time.Now()
+	session := dealBlackjackSession("game-rules", "dm:a:b", []string{"a", "b"}, "a", now)
+	session.Hands["a"] = []string{"club02", "heart03"}
+	session.Deck = []string{"spade04"}
+
+	if !applyBlackjackActionToSession(&session, "a", "hit", now.Add(time.Second)) {
+		t.Fatal("hit was rejected")
+	}
+	if session.CurrentTurn != "a" || len(session.Hands["a"]) != 3 {
+		t.Fatalf("after hit current turn = %q, hand = %#v", session.CurrentTurn, session.Hands["a"])
+	}
+	if !applyBlackjackActionToSession(&session, "a", "stand", now.Add(2*time.Second)) {
+		t.Fatal("stand was rejected")
+	}
+	if session.CurrentTurn != "b" || !session.Stood["a"] {
+		t.Fatalf("after stand current turn = %q, stood = %#v", session.CurrentTurn, session.Stood)
+	}
+}
+
+func TestBlackjackRestartAlternatesStartingPlayer(t *testing.T) {
+	now := time.Now()
+	session := dealBlackjackSession("game-restart", "dm:a:b", []string{"a", "b"}, "a", now)
+	session.Status = "finished"
+	if !applyBlackjackActionToSession(&session, "a", "restart", now.Add(time.Minute)) {
+		t.Fatal("restart was rejected")
+	}
+	if session.StartingPlayer != "b" || session.CurrentTurn != "b" {
+		t.Fatalf("starter = %q, turn = %q, want b", session.StartingPlayer, session.CurrentTurn)
+	}
+}
+
 func TestBlackjackStorePersistsGameForReconnect(t *testing.T) {
 	server := miniredis.RunT(t)
 	firstClient := redis.NewClient(&redis.Options{Addr: server.Addr()})
@@ -65,12 +97,17 @@ func TestBlackjackStorePersistsGameForReconnect(t *testing.T) {
 		t.Fatalf("persisted game has invalid deal: %#v", sessions[0])
 	}
 
-	updated, err := secondStore.ApplyAction(ctx, "a", "game-1", "stand")
+	starter := created.StartingPlayer
+	opponent := created.PlayerIDs[0]
+	if starter == opponent {
+		opponent = created.PlayerIDs[1]
+	}
+	updated, err := secondStore.ApplyAction(ctx, starter, "game-1", "stand")
 	if err != nil {
 		t.Fatalf("apply action: %v", err)
 	}
-	if !updated.Stood["a"] || updated.CurrentTurn != "b" {
-		t.Fatalf("updated game = %#v, want a stood and b turn", updated)
+	if !updated.Stood[starter] || updated.CurrentTurn != opponent {
+		t.Fatalf("updated game = %#v, want starter stood and opponent turn", updated)
 	}
 	if updated.Revision != created.Revision+1 {
 		t.Fatalf("updated revision = %d, want %d", updated.Revision, created.Revision+1)
@@ -110,7 +147,8 @@ func TestBlackjackStoreSerializesConcurrentActions(t *testing.T) {
 	t.Cleanup(func() { client.Close() })
 	store := NewBlackjackStore(client)
 	ctx := context.Background()
-	if _, err := store.Create(ctx, "game-race", "dm:a:b", "a", "b"); err != nil {
+	created, err := store.Create(ctx, "game-race", "dm:a:b", "a", "b")
+	if err != nil {
 		t.Fatalf("create game: %v", err)
 	}
 
@@ -120,7 +158,7 @@ func TestBlackjackStoreSerializesConcurrentActions(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			_, err := store.ApplyAction(ctx, "a", "game-race", "hit")
+			_, err := store.ApplyAction(ctx, created.StartingPlayer, "game-race", "stand")
 			errorsByAction <- err
 		}()
 	}

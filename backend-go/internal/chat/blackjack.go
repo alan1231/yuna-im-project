@@ -2,9 +2,11 @@ package chat
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -34,6 +36,7 @@ type blackjackSession struct {
 	Deck           []string            `json:"deck"`
 	Hands          map[string][]string `json:"hands"`
 	Stood          map[string]bool     `json:"stood"`
+	StartingPlayer string              `json:"starting_player"`
 	CurrentTurn    string              `json:"current_turn"`
 	Winner         string              `json:"winner,omitempty"`
 	LastActionAt   time.Time           `json:"last_action_at"`
@@ -57,25 +60,40 @@ func blackjackUserGamesKey(userID string) string {
 }
 
 func newBlackjackSession(gameID, conversationID, firstPlayerID, secondPlayerID string, now time.Time) blackjackSession {
+	players := []string{firstPlayerID, secondPlayerID}
+	starterIndex, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(len(players))))
+	if err != nil {
+		starterIndex = big.NewInt(0)
+	}
+	return dealBlackjackSession(gameID, conversationID, players, players[starterIndex.Int64()], now)
+}
+
+func dealBlackjackSession(gameID, conversationID string, playerIDs []string, startingPlayer string, now time.Time) blackjackSession {
 	deck := blackjackDeck()
 	shuffleBlackjackDeck(deck)
+	firstPlayerID, secondPlayerID := playerIDs[0], playerIDs[1]
 	hands := map[string][]string{firstPlayerID: {}, secondPlayerID: {}}
+	dealOrder := []string{startingPlayer, firstPlayerID}
+	if startingPlayer == firstPlayerID {
+		dealOrder[1] = secondPlayerID
+	}
 	for range 2 {
-		hands[firstPlayerID] = append(hands[firstPlayerID], deck[0])
-		deck = deck[1:]
-		hands[secondPlayerID] = append(hands[secondPlayerID], deck[0])
-		deck = deck[1:]
+		for _, playerID := range dealOrder {
+			hands[playerID] = append(hands[playerID], deck[0])
+			deck = deck[1:]
+		}
 	}
 	return blackjackSession{
 		GameID:         gameID,
 		ConversationID: conversationID,
-		PlayerIDs:      []string{firstPlayerID, secondPlayerID},
+		PlayerIDs:      append([]string(nil), playerIDs...),
 		Status:         "playing",
 		CreatedAt:      now,
 		Deck:           deck,
 		Hands:          hands,
 		Stood:          map[string]bool{firstPlayerID: false, secondPlayerID: false},
-		CurrentTurn:    firstPlayerID,
+		StartingPlayer: startingPlayer,
+		CurrentTurn:    startingPlayer,
 		LastActionAt:   now,
 		Revision:       1,
 	}
@@ -129,7 +147,8 @@ func blackjackState(session blackjackSession) bson.M {
 	return bson.M{
 		"game_id": session.GameID, "game_type": "blackjack", "conversation_id": session.ConversationID,
 		"player_ids": session.PlayerIDs, "hands": session.Hands, "scores": scores,
-		"status": session.Status, "current_turn": session.CurrentTurn, "winner": session.Winner,
+		"status": session.Status, "starting_player": session.StartingPlayer,
+		"current_turn": session.CurrentTurn, "winner": session.Winner,
 		"revision": session.Revision,
 	}
 }
@@ -142,7 +161,15 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 		if session.Status != "finished" && session.Status != "canceled" {
 			return false
 		}
-		next := newBlackjackSession(session.GameID, session.ConversationID, session.PlayerIDs[0], session.PlayerIDs[1], now)
+		previousStarter := session.StartingPlayer
+		if previousStarter == "" {
+			previousStarter = session.PlayerIDs[0]
+		}
+		nextStarter := session.PlayerIDs[0]
+		if previousStarter == session.PlayerIDs[0] {
+			nextStarter = session.PlayerIDs[1]
+		}
+		next := dealBlackjackSession(session.GameID, session.ConversationID, session.PlayerIDs, nextStarter, now)
 		next.Revision = session.Revision + 1
 		*session = next
 		return true
@@ -156,7 +183,7 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 		session.Revision++
 		return true
 	}
-	if session.Status != "playing" || session.CurrentTurn != userID || len(session.Deck) == 0 {
+	if session.Status != "playing" || session.CurrentTurn != userID {
 		return false
 	}
 
@@ -164,6 +191,9 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 	hand := session.Hands[userID]
 	switch action {
 	case "hit":
+		if len(session.Deck) == 0 {
+			return false
+		}
 		hand = append(hand, session.Deck[0])
 		session.Deck = session.Deck[1:]
 		session.Hands[userID] = hand
@@ -189,10 +219,12 @@ func applyBlackjackActionToSession(session *blackjackSession, userID, action str
 		default:
 			session.Winner = first
 		}
-	} else if userID == first {
-		session.CurrentTurn = second
-	} else {
-		session.CurrentTurn = first
+	} else if action == "stand" {
+		if userID == first {
+			session.CurrentTurn = second
+		} else {
+			session.CurrentTurn = first
+		}
 	}
 	session.Revision++
 	return true

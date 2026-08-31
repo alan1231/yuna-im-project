@@ -153,6 +153,8 @@ const resources = {
         blackjackFinished: '已結束',
         blackjackYourTurn: '輪到你',
         blackjackOpponentTurn: '等待對手',
+        blackjackYouStart: '本局你先手',
+        blackjackOpponentStarts: '本局對手先手',
         blackjackOpponent: '對手',
         blackjackYou: '你的牌',
         blackjackHit: '要牌',
@@ -378,6 +380,8 @@ const resources = {
         blackjackFinished: 'Finished',
         blackjackYourTurn: 'Your turn',
         blackjackOpponentTurn: 'Opponent turn',
+        blackjackYouStart: 'You start this round',
+        blackjackOpponentStarts: 'Opponent starts this round',
         blackjackOpponent: 'Opponent',
         blackjackYou: 'Your hand',
         blackjackHit: 'Hit',
@@ -454,9 +458,12 @@ const resources = {
   },
 }
 
+const initialLanguage = window.localStorage.getItem('yuna-im-locale') || 'zh-TW'
+document.documentElement.lang = initialLanguage
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: window.localStorage.getItem('yuna-im-locale') || 'zh-TW',
+  lng: initialLanguage,
   fallbackLng: 'zh-TW',
   interpolation: {
     escapeValue: false,

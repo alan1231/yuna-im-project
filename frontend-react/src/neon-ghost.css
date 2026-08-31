@@ -1162,8 +1162,7 @@
 .blackjack-score { display: inline-flex; align-items: baseline; gap: 2px; padding: 3px 7px; color: #071719; background: #eef4ed; border: 2px solid #000; box-shadow: 2px 2px 0 #000; }
 .blackjack-score strong { font-size: 20px; line-height: 1; }
 .blackjack-score small { font-size: 8px; font-weight: 900; }
-.blackjack-cards { display: flex; align-items: flex-end; min-height: 112px; padding: 12px 6px 2px; }
-.blackjack-player-self .blackjack-cards { justify-content: flex-end; }
+.blackjack-cards { display: flex; align-items: flex-end; justify-content: center; min-height: 112px; padding: 12px 6px 2px; }
 .blackjack-cards img {
   position: relative;
   width: 68px;
