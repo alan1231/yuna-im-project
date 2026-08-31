@@ -1707,6 +1707,40 @@
   }
 }
 
+@media (max-width: 768px) {
+  html:has(.chat-shell),
+  body:has(.chat-shell),
+  #app:has(.chat-shell),
+  .app-shell:has(.chat-shell) {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body:has(.chat-shell) {
+    position: fixed;
+    inset: 0;
+  }
+
+  .chat-shell,
+  .chat-panel,
+  .room-sidebar {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .room-list,
+  .message-list,
+  .drawer-contact-list,
+  .add-contact-user-list,
+  .group-member-picker {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
 /* The account screen can grow beyond a desktop viewport after the full logo is shown. */
 #app:has(.account-screen) {
   height: auto;
