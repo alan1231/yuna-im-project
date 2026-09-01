@@ -9,6 +9,7 @@ import (
 type userResponse struct {
 	UserID      string    `json:"user_id" bson:"user_id"`
 	DisplayName string    `json:"display_name" bson:"display_name"`
+	AvatarURL   string    `json:"avatar_url,omitempty" bson:"avatar_url,omitempty"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 	Online      bool      `json:"online" bson:"online"`
 	LastSeen    time.Time `json:"last_seen" bson:"last_seen"`
@@ -33,6 +34,7 @@ type friendResponse struct {
 	UserID      string    `json:"user_id" bson:"user_id"`
 	FriendID    string    `json:"friend_id" bson:"friend_id"`
 	DisplayName string    `json:"display_name" bson:"display_name"`
+	AvatarURL   string    `json:"avatar_url,omitempty" bson:"avatar_url,omitempty"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 	Online      bool      `json:"online" bson:"online"`
 	LastSeen    time.Time `json:"last_seen" bson:"last_seen"`
@@ -83,6 +85,7 @@ type conversationResponse struct {
 	ConversationID      string     `json:"conversation_id"`
 	RecipientID         string     `json:"recipient_id"`
 	DisplayName         string     `json:"display_name"`
+	AvatarURL           string     `json:"avatar_url,omitempty"`
 	LastMessage         string     `json:"last_message"`
 	LastMessageAt       time.Time  `json:"last_message_at"`
 	LastMessageSenderID string     `json:"last_message_sender_id"`

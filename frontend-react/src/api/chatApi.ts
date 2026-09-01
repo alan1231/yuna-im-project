@@ -59,6 +59,7 @@ export type FriendRecord = {
   display_name: string
   online?: boolean
   last_seen?: string
+  avatar_url?: string
 }
 
 export type GroupRecord = {
@@ -81,6 +82,7 @@ export type ConversationRecord = {
   last_message_sender_id?: string
   last_message_read_at?: string
   unread_count?: number
+  avatar_url?: string
 }
 
 export type FriendRequestRecord = {
@@ -107,6 +109,12 @@ export const loginAccount = (displayName: string, password: string) =>
   authenticate('/auth/login', displayName, password)
 
 export const fetchCurrentUser = () => requestJson<ApiUser>(`${API_URL}/auth/me`)
+
+export const updateAvatar = (avatarUrl: string) => requestJson<ApiUser>(`${API_URL}/auth/avatar`, {
+  method: 'POST',
+  headers: jsonHeaders,
+  body: JSON.stringify({ avatar_url: avatarUrl }),
+})
 
 export const logoutAccount = () => requestOk(`${API_URL}/auth/logout`, { method: 'POST' })
 

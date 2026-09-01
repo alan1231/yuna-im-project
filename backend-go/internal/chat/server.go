@@ -564,6 +564,7 @@ func listFriends(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 
 		friends[index].Online = user.Online
 		friends[index].LastSeen = user.LastSeen
+		friends[index].AvatarURL = user.AvatarURL
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1371,6 +1372,7 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		displayName, isFriend := friendNames[otherID]
 		isGroup := strings.HasPrefix(conversationID, "group:")
 		memberIDs := []string{}
+		avatarURL := ""
 		if isGroup {
 			group, err := lookupGroupByConversation(r.Context(), client, conversationID)
 			if err != nil || !stringSliceContains(group.MemberIDs, userID) {
@@ -1382,11 +1384,15 @@ func handleConversations(w http.ResponseWriter, r *http.Request, client *mongo.C
 		} else if displayName == "" {
 			displayName = lookupDisplayName(r.Context(), client, otherID)
 		}
+		if !isGroup {
+			avatarURL = lookupAvatarURL(r.Context(), client, otherID)
+		}
 
 		conversations = append(conversations, conversationResponse{
 			ConversationID:      conversationID,
 			RecipientID:         otherID,
 			DisplayName:         displayName,
+			AvatarURL:           avatarURL,
 			LastMessage:         messagePreviewText(message),
 			LastMessageAt:       messageTime(message["time"]),
 			LastMessageSenderID: senderID,
@@ -1553,6 +1559,14 @@ func lookupDisplayName(ctx context.Context, client *mongo.Client, userID string)
 	}
 
 	return user.DisplayName
+}
+
+func lookupAvatarURL(ctx context.Context, client *mongo.Client, userID string) string {
+	var user userResponse
+	if err := client.Database(databaseName).Collection(usersName).FindOne(ctx, bson.M{"user_id": userID}).Decode(&user); err != nil {
+		return ""
+	}
+	return user.AvatarURL
 }
 
 func lookupGroupByConversation(ctx context.Context, client *mongo.Client, conversationID string) (groupResponse, error) {
@@ -1835,6 +1849,9 @@ func Run(cfg Config) error {
 	}))
 	mux.HandleFunc("/auth/me", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleMe(w, r, client)
+	}))
+	mux.HandleFunc("/auth/avatar", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
+		handleUpdateAvatar(w, r, client)
 	}))
 	mux.HandleFunc("/auth/ws-ticket", withSessionAuth(authenticateSession, func(w http.ResponseWriter, r *http.Request) {
 		handleWSTicket(w, r, sessions)

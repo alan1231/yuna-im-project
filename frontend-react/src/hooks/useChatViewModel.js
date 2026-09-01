@@ -99,6 +99,7 @@ const createFriendRoom = (currentUserId, friend, t) => ({
   isFriend: true,
   online: Boolean(friend.online),
   lastSeen: friend.last_seen || '',
+  avatarUrl: friend.avatar_url || '',
   lastMessage: '',
   lastMessageAt: '',
   lastMessageTimeMs: 0,
@@ -116,6 +117,7 @@ const createUserRoom = (currentUserId, user, description) => ({
   isFriend: false,
   online: Boolean(user.online),
   lastSeen: user.last_seen || '',
+  avatarUrl: user.avatar_url || '',
   lastMessage: '',
   lastMessageAt: '',
   lastMessageTimeMs: 0,
@@ -729,6 +731,7 @@ export const useChatViewModel = (currentUser) => {
             ? t('chat.friend')
             : t('chat.conversation'),
           initials: getInitials(displayName),
+          avatarUrl: conversation.avatar_url || '',
           recipientId: conversation.recipient_id,
           conversationId: conversation.conversation_id,
           isFriend: Boolean(conversation.is_friend),

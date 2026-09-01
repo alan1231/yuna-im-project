@@ -248,9 +248,14 @@ type credentialsRequest struct {
 	Password    string `json:"password"`
 }
 
+type avatarRequest struct {
+	AvatarURL string `json:"avatar_url"`
+}
+
 type authUser struct {
 	UserID       string    `bson:"user_id"`
 	DisplayName  string    `bson:"display_name"`
+	AvatarURL    string    `bson:"avatar_url"`
 	LoginName    string    `bson:"login_name"`
 	PasswordHash string    `bson:"password_hash"`
 	CreatedAt    time.Time `bson:"created_at"`
@@ -385,7 +390,8 @@ func writeAuthResponse(w http.ResponseWriter, r *http.Request, sessions *Session
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(authResponse{Token: token, User: userResponse{
 		UserID: user.UserID, DisplayName: user.DisplayName, CreatedAt: user.CreatedAt,
-		Online: user.Online, LastSeen: user.LastSeen,
+		AvatarURL: user.AvatarURL,
+		Online:    user.Online, LastSeen: user.LastSeen,
 	}}); err != nil {
 		log.Printf("登入回應 JSON 失敗: %v", err)
 	}
@@ -418,6 +424,24 @@ func handleMe(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
+}
+
+func handleUpdateAvatar(w http.ResponseWriter, r *http.Request, client *mongo.Client) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req avatarRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || !strings.HasPrefix(req.AvatarURL, "https://api.dicebear.com/") {
+		http.Error(w, "invalid avatar url", http.StatusBadRequest)
+		return
+	}
+	result, err := client.Database(databaseName).Collection(usersName).UpdateOne(r.Context(), bson.M{"user_id": authenticatedUserID(r)}, bson.M{"$set": bson.M{"avatar_url": req.AvatarURL}})
+	if err != nil || result.MatchedCount == 0 {
+		http.Error(w, "update avatar failed", http.StatusInternalServerError)
+		return
+	}
+	handleMe(w, r, client)
 }
 
 func handleWSTicket(w http.ResponseWriter, r *http.Request, sessions *SessionStore) {

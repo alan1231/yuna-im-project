@@ -72,6 +72,10 @@ function ChatRoute() {
         id: user.user_id,
         displayName: user.display_name,
         token: currentUser.token,
+        avatarUrl: user.avatar_url || currentUser.avatarUrl,
+        avatarStyle: currentUser.avatarStyle,
+        avatarSeed: currentUser.avatarSeed,
+        avatarBackground: currentUser.avatarBackground,
       }))
       .catch(() => clearCurrentUser())
       .finally(() => setIsRestoringSession(false))

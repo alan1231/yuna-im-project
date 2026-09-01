@@ -2,6 +2,10 @@ export type CurrentUser = {
   id: string
   displayName: string
   token: string
+  avatarUrl?: string
+  avatarStyle?: string
+  avatarSeed?: string
+  avatarBackground?: string
 }
 
 export type ApiUser = {
@@ -9,6 +13,7 @@ export type ApiUser = {
   display_name: string
   online?: boolean
   last_seen?: string
+  avatar_url?: string
 }
 
 export type ChatRoom = {

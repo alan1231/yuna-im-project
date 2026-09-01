@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import LanguageSwitcher from '../LanguageSwitcher.jsx'
+import AvatarSettings from './AvatarSettings.jsx'
 
 const groupFormSchema = z.object({
   groupName: z.string().trim().min(1).max(32),
@@ -52,6 +53,7 @@ export default function RoomList({
   onRefreshContacts,
   onRefreshUsers,
   onLogout,
+  onAvatarChange,
 }) {
   const { i18n, t } = useTranslation()
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState([])
@@ -63,6 +65,7 @@ export default function RoomList({
   const [drawerView, setDrawerView] = useState('menu')
   const [openChatMenuId, setOpenChatMenuId] = useState('')
   const [newChatSearch, setNewChatSearch] = useState('')
+  const [isAvatarSettingsOpen, setIsAvatarSettingsOpen] = useState(false)
   const groupForm = useForm({
     resolver: zodResolver(groupFormSchema),
     defaultValues: {
@@ -221,6 +224,16 @@ export default function RoomList({
 
   return (
     <aside className="room-sidebar" aria-label={t('chat.roomListLabel')}>
+      {isAvatarSettingsOpen ? (
+        <AvatarSettings
+          currentUser={currentUser}
+          onClose={() => setIsAvatarSettingsOpen(false)}
+          onSave={async (avatar) => {
+            await onAvatarChange?.(avatar)
+            setIsAvatarSettingsOpen(false)
+          }}
+        />
+      ) : null}
       {isMenuOpen ? (
         <button type="button" className="drawer-backdrop" aria-label={t('chat.closeMenu')} onClick={closeDrawer} />
       ) : null}
@@ -229,7 +242,13 @@ export default function RoomList({
         {drawerView === 'menu' ? (
           <>
             <div className="drawer-profile">
-              <span className="drawer-avatar">{currentUser.displayName.slice(0, 1).toUpperCase()}</span>
+              <button type="button" className="drawer-avatar-button" onClick={() => setIsAvatarSettingsOpen(true)}>
+                {currentUser.avatarUrl ? (
+                  <img className="drawer-avatar-image" src={currentUser.avatarUrl} alt="" />
+                ) : (
+                  <span className="drawer-avatar">{currentUser.displayName.slice(0, 1).toUpperCase()}</span>
+                )}
+              </button>
               <div className="drawer-profile-text">
                 <strong>{currentUser.displayName}</strong>
                 <span>{t('chat.currentUser')}</span>
@@ -287,7 +306,7 @@ export default function RoomList({
               {visibleDirectRooms.map((room) => (
                 <div key={room.id} className="drawer-contact-row">
                   <button type="button" className="drawer-contact-item" onClick={() => selectContact(room.id)}>
-                    <span className="room-avatar">{room.initials}</span>
+          {room.avatarUrl ? <img className="room-avatar room-avatar-image" src={room.avatarUrl} alt="" /> : <span className="room-avatar">{room.initials}</span>}
                     <span className="drawer-contact-content">
                       <span className="drawer-contact-topline">
                         <strong>{room.name}</strong>

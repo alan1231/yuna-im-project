@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatViewModel } from '../../hooks/useChatViewModel'
+import { updateAvatar } from '../../api/chatApi'
 import ChatComposer from './ChatComposer.jsx'
 import ChatHeader from './ChatHeader'
 import MessageList from './MessageList.jsx'
@@ -9,6 +10,7 @@ import VoiceCallBar from './VoiceCallBar.jsx'
 import VideoCallBar from './VideoCallBar.jsx'
 import BlackjackPanel from './BlackjackPanel.jsx'
 import { useChatUiStore } from '../../stores/chatUiStore'
+import { useAuthStore } from '../../stores/authStore'
 import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
 
 type ChatWindowProps = {
@@ -20,6 +22,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
   const { t } = useTranslation()
   const mobileView = useChatUiStore((state) => state.mobileView)
   const setMobileView = useChatUiStore((state) => state.setMobileView)
+  const setCurrentUser = useAuthStore((state) => state.setCurrentUser)
   const [wasMobile, setWasMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
   const {
     rooms,
@@ -120,6 +123,16 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         activeRoomId={activeRoomId}
         error={roomError}
         currentUser={currentUser}
+        onAvatarChange={async (avatar) => {
+          const user = await updateAvatar(avatar.avatarUrl)
+          setCurrentUser({
+            ...currentUser,
+            avatarUrl: user.avatar_url || avatar.avatarUrl,
+            avatarStyle: avatar.avatarStyle,
+            avatarSeed: avatar.avatarSeed,
+            avatarBackground: avatar.avatarBackground,
+          })
+        }}
         onSelect={openRoom}
         onStartChat={openUserChat}
         onStartChatByDisplayName={startChatByDisplayName}

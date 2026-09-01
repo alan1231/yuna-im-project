@@ -15,6 +15,10 @@ const loadStoredUser = (): CurrentUser | null => {
       id: parsed.id,
       displayName: parsed.displayName,
       token: parsed.token,
+      avatarUrl: parsed.avatarUrl,
+      avatarStyle: parsed.avatarStyle,
+      avatarSeed: parsed.avatarSeed,
+      avatarBackground: parsed.avatarBackground,
     }
   } catch {
     return null
