@@ -441,7 +441,17 @@ func handleUpdateAvatar(w http.ResponseWriter, r *http.Request, client *mongo.Cl
 		http.Error(w, "update avatar failed", http.StatusInternalServerError)
 		return
 	}
-	handleMe(w, r, client)
+	var user userResponse
+	if err := client.Database(databaseName).Collection(usersName).FindOne(
+		r.Context(), bson.M{"user_id": authenticatedUserID(r)},
+	).Decode(&user); err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		log.Printf("頭像更新回應 JSON 失敗: %v", err)
+	}
 }
 
 func handleWSTicket(w http.ResponseWriter, r *http.Request, sessions *SessionStore) {
