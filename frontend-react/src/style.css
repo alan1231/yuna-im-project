@@ -750,14 +750,13 @@ button {
 }
 
 .group-modal {
-  width: min(420px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  padding: 20px;
 }
 
 .group-member-picker {
-  max-height: 260px;
   display: grid;
   gap: 8px;
-  overflow-y: auto;
 }
 
 .group-member-option {
@@ -1125,6 +1124,68 @@ button {
   overflow-y: auto;
 }
 
+.room-section-title {
+  padding: 12px 10px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.room-avatar-wrap {
+  position: relative;
+  width: 42px;
+  height: 42px;
+}
+
+.room-status-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  background: #35c98a;
+  border: 2px solid #1c1b1c;
+  border-radius: 50%;
+}
+
+.empty-chat-card {
+  margin: 24px 6px;
+  padding: 24px 18px;
+  display: grid;
+  gap: 8px;
+  color: #e5e1e2;
+  background: #292829;
+  border: 2px solid #000;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #000;
+  text-align: center;
+}
+
+.empty-chat-card strong {
+  font-size: 16px;
+}
+
+.empty-chat-card span {
+  color: #aaa7ad;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty-chat-card button {
+  min-height: 38px;
+  margin-top: 8px;
+  color: #141314;
+  background: #71d8c8;
+  border: 2px solid #000;
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 #000;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .user-menu-item .room-avatar {
   background: #334155;
 }
@@ -1287,6 +1348,8 @@ button {
 
 .chat-header {
   grid-area: header;
+  height: 112px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1304,6 +1367,7 @@ button {
 
 .chat-title-block {
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-title-block h1 {
@@ -2779,6 +2843,11 @@ h1 {
   }
 
   .room-avatar {
+    width: 46px;
+    height: 46px;
+  }
+
+  .room-avatar-wrap {
     width: 46px;
     height: 46px;
   }

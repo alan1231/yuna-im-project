@@ -69,6 +69,7 @@ export default function RoomList({
       groupName: '',
     },
   })
+  const groupName = groupForm.watch('groupName', '')
   const normalizedSearch = searchText.trim().toLowerCase()
   const normalizedContactSearch = contactSearchText.trim().toLowerCase()
 
@@ -151,6 +152,11 @@ export default function RoomList({
     closeDrawer()
   }
 
+  const openNewChat = () => {
+    onRefreshUsers?.()
+    setIsAddChatModalOpen(true)
+  }
+
   const toggleGroupMember = (memberId) => {
     setSelectedGroupMemberIds((currentIds) =>
       currentIds.includes(memberId)
@@ -169,6 +175,49 @@ export default function RoomList({
     setIsCreateGroupModalOpen(false)
     closeDrawer()
   })
+
+  const visibleRecentRooms = visibleRooms.filter((room) => !room.isGroup)
+  const visibleGroupRooms = visibleRooms.filter((room) => room.isGroup)
+
+  const renderRoom = (room) => {
+    const previewText = formatRoomPreview(room, t)
+
+    return (
+      <button
+        key={room.id}
+        type="button"
+        className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''}`}
+        onClick={() => onSelect(room.id)}
+      >
+        <span className="room-avatar-wrap">
+          <span className="room-avatar">{room.initials}</span>
+          {room.online ? <span className="room-status-dot" title={t('chat.online')} /> : null}
+        </span>
+        <span className="room-content">
+          <span className="room-topline">
+            <span className="room-name">{room.name}</span>
+            {room.lastMessageAt ? <time className="room-time">{room.lastMessageAt}</time> : null}
+          </span>
+          <span className="room-bottomline">
+            <span className="room-preview">{previewText}</span>
+            {room.lastMessageIsSelf ? (
+              <span
+                className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
+                aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+                title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
+              >
+                <span />
+                {room.lastMessageReadAt ? <span /> : null}
+              </span>
+            ) : null}
+            {!room.lastMessageIsSelf && room.unreadCount ? (
+              <span className="unread-badge">{room.unreadCount > 99 ? '99+' : room.unreadCount}</span>
+            ) : null}
+          </span>
+        </span>
+      </button>
+    )
+  }
 
   return (
     <aside className="room-sidebar" aria-label={t('chat.roomListLabel')}>
@@ -299,10 +348,7 @@ export default function RoomList({
               <button
                 type="button"
                 className="drawer-add-toggle"
-                onClick={() => {
-                  onRefreshUsers?.()
-                  setIsAddChatModalOpen(true)
-                }}
+                onClick={openNewChat}
               >
                 {t('chat.newChat')}
               </button>
@@ -456,42 +502,10 @@ export default function RoomList({
       </div>
 
       <nav className="room-list" aria-label={t('chat.roomTargetsLabel')}>
-        {visibleRooms.map((room) => {
-          const previewText = formatRoomPreview(room, t)
-
-          return (
-            <button
-              key={room.id}
-              type="button"
-              className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''}`}
-              onClick={() => onSelect(room.id)}
-            >
-              <span className="room-avatar">{room.initials}</span>
-              <span className="room-content">
-                <span className="room-topline">
-                  <span className="room-name">{room.name}</span>
-                  {room.lastMessageAt ? <time className="room-time">{room.lastMessageAt}</time> : null}
-                </span>
-                <span className="room-bottomline">
-                  <span className="room-preview">{previewText}</span>
-                  {room.lastMessageIsSelf ? (
-                    <span
-                      className={`read-checks ${room.lastMessageReadAt ? 'read-checks-read' : ''}`}
-                      aria-label={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                      title={room.lastMessageReadAt ? t('chat.read') : t('chat.unread')}
-                    >
-                      <span />
-                      {room.lastMessageReadAt ? <span /> : null}
-                    </span>
-                  ) : null}
-                  {!room.lastMessageIsSelf && room.unreadCount ? (
-                    <span className="unread-badge">{room.unreadCount > 99 ? '99+' : room.unreadCount}</span>
-                  ) : null}
-                </span>
-              </span>
-            </button>
-          )
-        })}
+        {visibleRecentRooms.length ? <li className="room-section-title">{t('chat.recentChats')}</li> : null}
+        {visibleRecentRooms.map(renderRoom)}
+        {visibleGroupRooms.length ? <li className="room-section-title">{t('chat.groups')}</li> : null}
+        {visibleGroupRooms.map(renderRoom)}
         {visibleUsers.map((user) => (
           <button
             key={user.user_id}
@@ -511,7 +525,17 @@ export default function RoomList({
           </button>
         ))}
 
-        {!hasVisibleTargets ? <p className="empty-menu">{t('chat.noTargets')}</p> : null}
+        {!hasVisibleTargets ? (
+          rooms.length === 0 && !normalizedSearch ? (
+            <div className="empty-chat-card">
+              <strong>{t('chat.startChatEmptyTitle')}</strong>
+              <span>{t('chat.startChatEmptyDescription')}</span>
+              <button type="button" onClick={openNewChat}>{t('chat.startChat')}</button>
+            </div>
+          ) : (
+            <p className="empty-menu">{t('chat.noTargets')}</p>
+          )
+        ) : null}
       </nav>
     </aside>
   )
