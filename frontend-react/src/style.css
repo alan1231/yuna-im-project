@@ -609,6 +609,52 @@ button {
   background: #353435;
 }
 
+.emulator-backdrop {
+  z-index: 80;
+}
+
+.emulator-modal {
+  width: min(900px, calc(100vw - 32px));
+  min-height: min(620px, calc(100vh - 32px));
+  padding: 20px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  color: #e5e1e2;
+  background: #141314;
+  border: 2px solid #000;
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 #000;
+}
+
+.emulator-file-picker {
+  min-height: 260px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  color: #e5e1e2;
+  background: #292829;
+  border: 2px dashed #71d8c8;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.emulator-file-picker small {
+  color: #aaa7ad;
+}
+
+.emulator-file-picker input {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.emulator-player {
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
 .drawer-profile-text {
   min-width: 0;
   display: grid;
