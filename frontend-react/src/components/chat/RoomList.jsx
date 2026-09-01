@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import LanguageSwitcher from '../LanguageSwitcher.jsx'
 import AvatarSettings from './AvatarSettings.jsx'
-import MegaDriveEmulator from './MegaDriveEmulator.jsx'
 
 const groupFormSchema = z.object({
   groupName: z.string().trim().min(1).max(32),
@@ -67,7 +66,6 @@ export default function RoomList({
   const [openChatMenuId, setOpenChatMenuId] = useState('')
   const [newChatSearch, setNewChatSearch] = useState('')
   const [isAvatarSettingsOpen, setIsAvatarSettingsOpen] = useState(false)
-  const [isEmulatorOpen, setIsEmulatorOpen] = useState(false)
   const groupForm = useForm({
     resolver: zodResolver(groupFormSchema),
     defaultValues: {
@@ -236,7 +234,6 @@ export default function RoomList({
           }}
         />
       ) : null}
-      {isEmulatorOpen ? <MegaDriveEmulator onClose={() => setIsEmulatorOpen(false)} /> : null}
       {isMenuOpen ? (
         <button type="button" className="drawer-backdrop" aria-label={t('chat.closeMenu')} onClick={closeDrawer} />
       ) : null}
@@ -270,11 +267,6 @@ export default function RoomList({
               <button type="button" className="drawer-menu-item" onClick={() => setIsCreateGroupModalOpen(true)}>
                 <span className="drawer-menu-icon">#</span>
                 <span>{t('chat.createGroup')}</span>
-              </button>
-
-              <button type="button" className="drawer-menu-item" onClick={() => setIsEmulatorOpen(true)}>
-                <span className="drawer-menu-icon">▶</span>
-                <span>{t('chat.emulatorTitle')}</span>
               </button>
 
               <button type="button" className="drawer-menu-item" onClick={onLogout}>
