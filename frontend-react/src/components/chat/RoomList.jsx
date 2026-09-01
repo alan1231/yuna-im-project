@@ -193,7 +193,7 @@ export default function RoomList({
         onClick={() => onSelect(room.id)}
       >
         <span className="room-avatar-wrap">
-          <span className="room-avatar">{room.initials}</span>
+          {room.avatarUrl ? <img className="room-avatar room-avatar-image" src={room.avatarUrl} alt="" /> : <span className="room-avatar">{room.initials}</span>}
           {room.online ? <span className="room-status-dot" title={t('chat.online')} /> : null}
         </span>
         <span className="room-content">
@@ -415,7 +415,7 @@ export default function RoomList({
                     className="add-contact-user-row"
                     onClick={() => handleStartChat(user.display_name)}
                   >
-                    <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
+                    {user.avatar_url ? <img className="room-avatar room-avatar-image" src={user.avatar_url} alt="" /> : <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>}
                     <span className="add-contact-user-name">{user.display_name}</span>
                     {user.online ? <span className="presence-online-dot" aria-label={t('chat.presence.online')} /> : null}
                   </button>
@@ -475,7 +475,7 @@ export default function RoomList({
                       checked={isSelected}
                       onChange={() => toggleGroupMember(user.user_id)}
                     />
-                    <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
+                    {user.avatar_url ? <img className="room-avatar room-avatar-image" src={user.avatar_url} alt="" /> : <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>}
                     <span className="group-member-content">
                       <strong>{user.display_name}</strong>
                       <span>{formatPresence({ online: user.online, lastSeen: user.last_seen }, t, i18n.language)}</span>
@@ -532,7 +532,7 @@ export default function RoomList({
             className="room-item user-menu-item"
             onClick={() => onStartChat(user)}
           >
-            <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
+            {user.avatar_url ? <img className="room-avatar room-avatar-image" src={user.avatar_url} alt="" /> : <span className="room-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>}
             <span className="room-content">
               <span className="room-topline">
                 <span className="room-name">{user.display_name}</span>

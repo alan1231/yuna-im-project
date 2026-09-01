@@ -1240,6 +1240,10 @@ button {
   height: 42px;
 }
 
+.room-avatar-image {
+  object-fit: cover;
+}
+
 .room-status-dot {
   position: absolute;
   right: -2px;

@@ -253,9 +253,10 @@ export const useChatViewModel = (currentUser) => {
             : isFriend
               ? t('chat.friend')
               : room.description || existingRoom.description,
-          isFriend,
-          isGroup,
-          lastMessage: room.lastMessage || existingRoom.lastMessage,
+           isFriend,
+           isGroup,
+           avatarUrl: room.avatarUrl || existingRoom.avatarUrl || '',
+           lastMessage: room.lastMessage || existingRoom.lastMessage,
           lastMessageAt: room.lastMessageAt || existingRoom.lastMessageAt,
           lastMessageTimeMs: room.lastMessageTimeMs || existingRoom.lastMessageTimeMs,
           lastMessageIsSelf: room.lastMessage ? room.lastMessageIsSelf : existingRoom.lastMessageIsSelf,
