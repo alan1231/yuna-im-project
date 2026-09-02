@@ -170,6 +170,8 @@ export const useChatViewModel = (currentUser) => {
   const connectRef = useRef(null)
   const reloadChatDataRef = useRef(null)
   const reconnectTimerRef = useRef(null)
+  const reconnectAttemptRef = useRef(0)
+  const queuedMessagesRef = useRef([])
   const shouldReconnectRef = useRef(false)
   const isConnectingRef = useRef(false)
   const hasConnectedRef = useRef(false)
@@ -200,6 +202,23 @@ export const useChatViewModel = (currentUser) => {
 
   const getActiveRoom = useCallback(() => {
     return roomsRef.current.find((room) => room.id === activeRoomIdRef.current) || roomsRef.current[0]
+  }, [])
+
+  const scheduleReconnect = useCallback(() => {
+    if (!shouldReconnectRef.current || reconnectTimerRef.current) return
+    const delay = Math.min(15_000, 1_000 * (2 ** reconnectAttemptRef.current))
+    reconnectAttemptRef.current += 1
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null
+      connectRef.current?.()
+    }, delay)
+  }, [])
+
+  const flushQueuedMessages = useCallback(() => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    const queuedMessages = queuedMessagesRef.current.splice(0)
+    queuedMessages.forEach((payload) => socket.send(JSON.stringify(payload)))
   }, [])
 
   const touchConversationCache = useCallback((conversationId) => {
@@ -591,9 +610,7 @@ export const useChatViewModel = (currentUser) => {
     } catch (error) {
       console.error('WebSocket ticket failed:', error)
       setConnectionError(t('chat.errors.connectionFailed', { url: WS_URL }))
-      if (shouldReconnectRef.current) {
-        reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
-      }
+      scheduleReconnect()
       return
     } finally {
       isConnectingRef.current = false
@@ -602,6 +619,8 @@ export const useChatViewModel = (currentUser) => {
     socket.onopen = () => {
       setIsConnected(true)
       setConnectionError('')
+      reconnectAttemptRef.current = 0
+      flushQueuedMessages()
       sendActiveConversation()
       if (hasConnectedRef.current) {
         reloadChatDataRef.current?.().catch((error) => {
@@ -632,11 +651,9 @@ export const useChatViewModel = (currentUser) => {
       if (socketRef.current !== socket) return
       socketRef.current = null
       setIsConnected(false)
-      if (shouldReconnectRef.current) {
-        reconnectTimerRef.current = window.setTimeout(() => connectRef.current?.(), 2000)
-      }
+      scheduleReconnect()
     }
-  }, [addSystemMessage, getActiveRoom, handleWebSocketEvent, sendActiveConversation, t])
+  }, [addSystemMessage, flushQueuedMessages, getActiveRoom, handleWebSocketEvent, scheduleReconnect, sendActiveConversation, t])
 
   useEffect(() => {
     connectRef.current = connect
@@ -993,27 +1010,30 @@ export const useChatViewModel = (currentUser) => {
     const attachment = presetText ? null : fileAttachment
     if (!text && !attachment) return
 
+    const room = getActiveRoom()
+    if (!room) return
+    const payload = {
+      sender: currentUser.displayName,
+      sender_id: currentUser.id,
+      recipient_id: room.recipientId,
+      conversation_id: room.conversationId,
+      text,
+      attachment_url: attachment?.url || '',
+      attachment_name: attachment?.name || '',
+      attachment_type: attachment?.type || '',
+      attachment_size: attachment?.size || 0,
+    }
     const socket = socketRef.current
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      queuedMessagesRef.current.push(payload)
+      setUserInput('')
+      setFileAttachment(null)
       setConnectionError(t('chat.errors.reconnecting'))
       reconnect()
       return
     }
 
-    const room = getActiveRoom()
-    socket.send(
-      JSON.stringify({
-        sender: currentUser.displayName,
-        sender_id: currentUser.id,
-        recipient_id: room.recipientId,
-        conversation_id: room.conversationId,
-        text,
-        attachment_url: attachment?.url || '',
-        attachment_name: attachment?.name || '',
-        attachment_type: attachment?.type || '',
-        attachment_size: attachment?.size || 0,
-      }),
-    )
+    socket.send(JSON.stringify(payload))
     setUserInput('')
     setFileAttachment(null)
   }, [currentUser.displayName, currentUser.id, fileAttachment, getActiveRoom, reconnect, t, userInput])
@@ -1112,6 +1132,9 @@ export const useChatViewModel = (currentUser) => {
     canSend,
     voiceCall: voiceCall.call,
     videoCall: videoCall.call,
+    voiceQuality: voiceCall.quality,
+    videoQuality: videoCall.quality,
+    toggleVideoScreenShare: videoCall.toggleScreenShare,
     setVoiceRemoteElement,
     setVideoRemoteElement,
     setVideoLocalElement,

@@ -1217,6 +1217,30 @@ button {
 .emulator-frame { width: 100%; min-height: 0; border: 0; background: #050b0d; }
 .emulator-empty { display: grid; place-items: center; min-height: 300px; color: var(--muted); background: #050b0d; }
 .emulator-note { margin: 0; color: var(--muted); font-size: 12px; }
+.emulator-header-actions { display: flex; align-items: center; gap: 8px; }
+.emulator-fullscreen-button { min-height: 32px; padding: 5px 9px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.emulator-fullscreen-button:hover { color: #fff; background: #6941c6; border-color: #6941c6; }
+.call-quality { display: block; margin-top: 4px; font-size: 11px; font-weight: 700; }
+.call-quality-good { color: #35c98a; }
+.call-quality-fair { color: #f4cf58; }
+.call-quality-poor { color: #ef5350; }
+
+@media (max-width: 768px) {
+  .emulator-backdrop { padding: 0; place-items: stretch; }
+  .emulator-modal {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+    padding: 10px;
+  }
+  .emulator-controls { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .emulator-controls select,
+  .emulator-controls input,
+  .emulator-load-button { width: 100%; box-sizing: border-box; }
+  .emulator-frame { min-height: 0; }
+  .emulator-empty { min-height: 0; }
+}
 
 .sidebar-search {
   padding: 12px 12px 8px;
@@ -1684,6 +1708,8 @@ h1 {
   border-bottom: 1px solid #ffd1cc;
   font-size: 14px;
 }
+
+.connection-error-offline { color: #b42318; background: #fff3f0; }
 
 .connection-error span {
   min-width: 0;

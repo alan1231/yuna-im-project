@@ -40,9 +40,22 @@ Neon Ghost web frontend built with React, TypeScript, and Vite.
 - 一對一聊天、好友邀請流程、群組聊天。
 - WebSocket 即時訊息、已讀回執與未讀顯示。
 - 語音／視訊通話（僅一對一）。
+- WebRTC 通話斷線自動恢復、瀏覽器斷網提示與基本通話品質提示。
 - 21 點小遊戲（僅一對一）。
 - 管理台介面。
 - DiceBear 生成式頭像：不需上傳圖片，可選風格、修改自訂種子與背景色；未設定時回退為首字母。
+
+## WebRTC TURN
+
+前端預設使用 Google STUN；正式環境建議另外設定 coturn TURN Server。將下列 Vite 環境變數放在 `frontend-react/.env.local`：
+
+```text
+VITE_TURN_URL=turns:turn.example.com:5349
+VITE_TURN_USERNAME=short-lived-username
+VITE_TURN_CREDENTIAL=short-lived-credential
+```
+
+TURN 憑證應由後端產生短期帳密，不要提交固定密碼到版本庫。
 
 ## 頭像
 

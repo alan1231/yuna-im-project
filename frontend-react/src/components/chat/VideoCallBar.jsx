@@ -9,6 +9,8 @@ export default function VideoCallBar({
   onToggleCamera,
   remoteVideoRef,
   localVideoRef,
+  quality = 'unknown',
+  onToggleScreenShare,
 }) {
   const { t } = useTranslation()
   const isVisible = videoCall.status !== 'idle'
@@ -18,6 +20,8 @@ export default function VideoCallBar({
       ? t('chat.videoIncoming', { name: videoCall.peerName })
       : videoCall.status === 'calling'
         ? t('chat.videoCalling', { name: videoCall.peerName })
+        : videoCall.status === 'reconnecting'
+          ? t('chat.videoReconnecting', { name: videoCall.peerName })
         : t('chat.videoConnected', { name: videoCall.peerName })
 
   if (videoCall.status === 'incoming') {
@@ -77,6 +81,7 @@ export default function VideoCallBar({
         <div className="video-call-info">
           <span>{t('chat.videoCall')}</span>
           <strong>{statusText}</strong>
+          {videoCall.status === 'connected' ? <small className={`call-quality call-quality-${quality}`}>{t(`chat.callQuality.${quality}`)}</small> : null}
         </div>
         <div className="video-call-actions">
           <>
@@ -87,6 +92,9 @@ export default function VideoCallBar({
                   </button>
                   <button type="button" className="voice-secondary-button" onClick={onToggleCamera}>
                     {videoCall.isCameraOn ? t('chat.videoCameraOff') : t('chat.videoCameraOn')}
+                  </button>
+                  <button type="button" className="voice-secondary-button" onClick={onToggleScreenShare}>
+                    {videoCall.isScreenSharing ? t('chat.screenShareStop') : t('chat.screenShareStart')}
                   </button>
                 </>
               ) : null}

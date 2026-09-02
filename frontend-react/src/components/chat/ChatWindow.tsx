@@ -32,6 +32,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
   const setMobileView = useChatUiStore((state) => state.setMobileView)
   const setCurrentUser = useAuthStore((state) => state.setCurrentUser)
   const [wasMobile, setWasMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches)
+  const [isBrowserOnline, setIsBrowserOnline] = useState(() => navigator.onLine)
   const {
     rooms,
     availableUsers,
@@ -50,6 +51,9 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     canSend,
     voiceCall,
     videoCall,
+    voiceQuality,
+    videoQuality,
+    toggleVideoScreenShare,
     setVoiceRemoteElement,
     setVideoRemoteElement,
     setVideoLocalElement,
@@ -120,6 +124,17 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     }
   }, [wasMobile])
 
+  useEffect(() => {
+    const handleOnline = () => setIsBrowserOnline(true)
+    const handleOffline = () => setIsBrowserOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   return (
     <main
       className={`chat-shell ${
@@ -155,6 +170,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
 
       <VoiceCallBar
         voiceCall={voiceCall}
+        quality={voiceQuality}
         onAccept={acceptVoiceCall}
         onReject={rejectVoiceCall}
         onEnd={endVoiceCall}
@@ -164,11 +180,13 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
 
       <VideoCallBar
         videoCall={videoCall}
+        quality={videoQuality}
         onAccept={acceptVideoCall}
         onReject={rejectVideoCall}
         onEnd={endVideoCall}
         onToggleMute={toggleVideoMute}
         onToggleCamera={toggleVideoCamera}
+        onToggleScreenShare={toggleVideoScreenShare}
         remoteVideoRef={setVideoRemoteElement}
         localVideoRef={setVideoLocalElement}
       />
@@ -195,6 +213,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
               </button>
             </div>
           ) : null}
+          {!isBrowserOnline ? <div className="connection-error connection-error-offline">{t('chat.networkOffline')}</div> : null}
 
           <MessageList
             messages={messages}

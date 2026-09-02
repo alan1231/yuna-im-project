@@ -7,6 +7,7 @@ export default function VoiceCallBar({
   onEnd,
   onToggleMute,
   remoteAudioRef,
+  quality = 'unknown',
 }) {
   const { t } = useTranslation()
   const isVisible = voiceCall.status !== 'idle'
@@ -19,6 +20,8 @@ export default function VoiceCallBar({
       ? t('chat.voiceIncoming', { name: voiceCall.peerName })
       : voiceCall.status === 'calling'
         ? t('chat.voiceCalling', { name: voiceCall.peerName })
+        : voiceCall.status === 'reconnecting'
+          ? t('chat.voiceReconnecting', { name: voiceCall.peerName })
         : t('chat.voiceConnected', { name: voiceCall.peerName })
 
   if (voiceCall.status === 'incoming') {
@@ -76,6 +79,7 @@ export default function VoiceCallBar({
       <div className="voice-call-text">
         <span>{t('chat.voiceCall')}</span>
         <strong>{statusText}</strong>
+        {voiceCall.status === 'connected' ? <small className={`call-quality call-quality-${quality}`}>{t(`chat.callQuality.${quality}`)}</small> : null}
       </div>
       <div className="voice-call-actions">
         <>
