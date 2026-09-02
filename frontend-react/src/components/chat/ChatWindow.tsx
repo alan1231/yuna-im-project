@@ -9,6 +9,7 @@ import RoomList from './RoomList.jsx'
 import VoiceCallBar from './VoiceCallBar.jsx'
 import VideoCallBar from './VideoCallBar.jsx'
 import BlackjackPanel from './BlackjackPanel.jsx'
+import EmulatorPanel from './EmulatorPanel.jsx'
 import { useChatUiStore } from '../../stores/chatUiStore'
 import { useAuthStore } from '../../stores/authStore'
 import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
@@ -16,6 +17,13 @@ import type { ApiUser, ChatRoom, CurrentUser } from '../../types/chat'
 type ChatWindowProps = {
   currentUser: CurrentUser
   onLogout: () => void
+}
+
+type AvatarChange = {
+  avatarUrl: string
+  avatarStyle?: string
+  avatarSeed?: string
+  avatarBackground?: string
 }
 
 export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
@@ -74,6 +82,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
     toggleVideoCamera,
   } = useChatViewModel(currentUser)
   const typedActiveRoom = activeRoom as ChatRoom | undefined
+  const [showEmulator, setShowEmulator] = useState(false)
 
   const openRoom = (roomId: string) => {
     selectRoom(roomId)
@@ -123,7 +132,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         activeRoomId={activeRoomId}
         error={roomError}
         currentUser={currentUser}
-        onAvatarChange={async (avatar) => {
+        onAvatarChange={async (avatar: AvatarChange) => {
           const user = await updateAvatar(avatar.avatarUrl)
           setCurrentUser({
             ...currentUser,
@@ -141,6 +150,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
         onRefreshContacts={refreshUsers}
         onRefreshUsers={refreshUsers}
         onLogout={onLogout}
+        onOpenEmulator={() => setShowEmulator(true)}
       />
 
       <VoiceCallBar
@@ -210,6 +220,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
           />
         </section>
       ) : null}
+      {showEmulator ? <EmulatorPanel onClose={() => setShowEmulator(false)} /> : null}
     </main>
   )
 }

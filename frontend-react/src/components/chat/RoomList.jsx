@@ -12,25 +12,30 @@ const groupFormSchema = z.object({
 
 const formatPresence = (room, t, language) => {
   if (room.online) return t('chat.presence.online')
-  if (!room.lastSeen) return t('chat.presence.unknown')
+  if (!room.lastSeen) return t('chat.presence.offline')
 
   const lastSeen = new Date(room.lastSeen)
-  if (Number.isNaN(lastSeen.getTime())) return t('chat.presence.unknown')
-  if (lastSeen.getFullYear() < 2000) return t('chat.presence.unknown')
+  if (Number.isNaN(lastSeen.getTime())) return t('chat.presence.offline')
+  if (lastSeen.getFullYear() < 2000) return t('chat.presence.offline')
 
   const diffMinutes = Math.max(0, Math.floor((Date.now() - lastSeen.getTime()) / 60000))
-  if (diffMinutes < 1) return t('chat.presence.justNow')
-  if (diffMinutes < 60) return t('chat.presence.minutesAgo', { count: diffMinutes })
+  let lastSeenLabel
+  if (diffMinutes < 1) lastSeenLabel = t('chat.presence.justNow')
+  else if (diffMinutes < 60) lastSeenLabel = t('chat.presence.minutesAgo', { count: diffMinutes })
+  else {
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) lastSeenLabel = t('chat.presence.hoursAgo', { count: diffHours })
+    else {
+      const diffDays = Math.floor(diffHours / 24)
+      lastSeenLabel = diffDays < 7
+        ? t('chat.presence.daysAgo', { count: diffDays })
+        : t('chat.presence.date', {
+          date: lastSeen.toLocaleDateString(language, { month: 'long', day: 'numeric' }),
+        })
+    }
+  }
 
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return t('chat.presence.hoursAgo', { count: diffHours })
-
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return t('chat.presence.daysAgo', { count: diffDays })
-
-  return t('chat.presence.date', {
-    date: lastSeen.toLocaleDateString(language, { month: 'long', day: 'numeric' }),
-  })
+  return t('chat.presence.offlineWithLastSeen', { time: lastSeenLabel })
 }
 
 const formatRoomPreview = (room, t) => {
@@ -53,6 +58,7 @@ export default function RoomList({
   onRefreshContacts,
   onRefreshUsers,
   onLogout,
+  onOpenEmulator,
   onAvatarChange,
 }) {
   const { i18n, t } = useTranslation()
@@ -160,6 +166,11 @@ export default function RoomList({
     setIsAddChatModalOpen(true)
   }
 
+  const openEmulator = () => {
+    closeDrawer()
+    onOpenEmulator?.()
+  }
+
   const toggleGroupMember = (memberId) => {
     setSelectedGroupMemberIds((currentIds) =>
       currentIds.includes(memberId)
@@ -189,12 +200,12 @@ export default function RoomList({
       <button
         key={room.id}
         type="button"
-        className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''}`}
+        className={`room-item ${room.id === activeRoomId ? 'room-item-active' : ''} ${!room.online && !room.isGroup ? 'room-item-offline' : ''}`}
         onClick={() => onSelect(room.id)}
       >
         <span className="room-avatar-wrap">
           {room.avatarUrl ? <img className="room-avatar room-avatar-image" src={room.avatarUrl} alt="" /> : <span className="room-avatar">{room.initials}</span>}
-          {room.online ? <span className="room-status-dot" title={t('chat.online')} /> : null}
+          {!room.isGroup ? <span className={`room-status-dot ${room.online ? 'room-status-dot-online' : 'room-status-dot-offline'}`} title={formatPresence(room, t, i18n.language)} aria-label={room.online ? t('chat.presence.online') : t('chat.presence.offline')} /> : null}
         </span>
         <span className="room-content">
           <span className="room-topline">
@@ -269,6 +280,11 @@ export default function RoomList({
                 <span>{t('chat.createGroup')}</span>
               </button>
 
+              <button type="button" className="drawer-menu-item" onClick={openEmulator}>
+                <span className="drawer-menu-icon">▣</span>
+                <span>{t('chat.emulatorOpen')}</span>
+              </button>
+
               <button type="button" className="drawer-menu-item" onClick={onLogout}>
                 <span className="drawer-menu-icon">↪</span>
                 <span>{t('chat.logout')}</span>
@@ -314,6 +330,7 @@ export default function RoomList({
                       </span>
                       <span className="drawer-contact-bottomline">
                         <span className={`presence-text ${room.online ? 'presence-online' : ''}`}>
+                          <i className={`presence-dot ${room.online ? 'presence-dot-online' : 'presence-dot-offline'}`} aria-hidden="true" />
                           {formatPresence(room, t, i18n.language)}
                         </span>
                         {room.lastMessageIsSelf ? (

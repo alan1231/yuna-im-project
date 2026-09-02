@@ -2,7 +2,7 @@
 
 ## Goal
 
-Neon Ghost is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, and a built-in Go stock bot.
+Neon Ghost is a real-time chat project that combines a React chat UI, a Go HTTP/WebSocket backend, MongoDB persistence, Redis presence, WebRTC voice/video signaling, and a blackjack mini-game.
 
 The current priority is a stable local/demo-grade IM experience with clear paths toward production hardening.
 
@@ -39,4 +39,4 @@ The current priority is a stable local/demo-grade IM experience with clear paths
 - User identity is client-controlled through `user_id`; production needs sessions or JWT.
 - Admin auth is token-based and intentionally lightweight.
 - Conversation list is still computed from recent messages instead of a dedicated summary collection.
-- Frontend has no lint/unit test setup yet.
+- Frontend has no lint setup yet; unit tests run through Vitest.
