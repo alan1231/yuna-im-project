@@ -31,7 +31,7 @@ export default function EmulatorPanel({ onClose }) {
   const [rom, setRom] = useState(null)
   const [useBundledRom, setUseBundledRom] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const iframeRef = useRef(null)
+  const modalRef = useRef(null)
 
   const system = systems.find((item) => item.id === systemId) || systems[0]
   const selectedRomUrl = useMemo(() => (rom ? URL.createObjectURL(rom) : ''), [rom])
@@ -48,13 +48,17 @@ export default function EmulatorPanel({ onClose }) {
   }, [])
 
   const toggleFullscreen = async () => {
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await iframeRef.current?.requestFullscreen()
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await modalRef.current?.requestFullscreen?.()
+    } catch (error) {
+      console.error('Fullscreen failed:', error)
+    }
   }
 
   return (
     <div className="modal-backdrop emulator-backdrop" role="dialog" aria-modal="true" aria-labelledby="emulator-title">
-      <section className="emulator-modal">
+      <section className="emulator-modal" ref={modalRef}>
         <header className="modal-header">
           <div>
             <p className="eyebrow">EmulatorJS</p>
@@ -89,7 +93,6 @@ export default function EmulatorPanel({ onClose }) {
         {romUrl ? (
           <iframe
             key={`${system.id}-${romUrl}`}
-            ref={iframeRef}
             className="emulator-frame"
             title={t('chat.emulatorTitle')}
             srcDoc={buildEmbedDocument(system.id, romUrl)}
