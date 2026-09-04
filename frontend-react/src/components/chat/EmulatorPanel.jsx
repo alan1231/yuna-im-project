@@ -90,17 +90,19 @@ export default function EmulatorPanel({ onClose }) {
           ) : null}
         </div>
 
-        {romUrl ? (
-          <iframe
-            key={`${system.id}-${romUrl}`}
-            className="emulator-frame"
-            title={t('chat.emulatorTitle')}
-            srcDoc={buildEmbedDocument(system.id, romUrl)}
-            allow="fullscreen"
-          />
-        ) : (
-          <div className="emulator-empty">{t('chat.emulatorChooseRom')}</div>
-        )}
+        <div className="emulator-stage">
+          {romUrl ? (
+            <iframe
+              key={`${system.id}-${romUrl}`}
+              className="emulator-frame"
+              title={t('chat.emulatorTitle')}
+              srcDoc={buildEmbedDocument(system.id, romUrl)}
+              allow="fullscreen"
+            />
+          ) : (
+            <div className="emulator-empty">{t('chat.emulatorChooseRom')}</div>
+          )}
+        </div>
         <p className="emulator-note">{t('chat.emulatorNote')}</p>
       </section>
     </div>
