@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import AdminStats from './AdminStats.jsx'
+import AdminAuditLog from './AdminAuditLog.jsx'
+import AdminUserActionDialog from './AdminUserActionDialog.jsx'
 import AdminUsersTable from './AdminUsersTable.jsx'
 import { useAdminViewModel } from '../../hooks/useAdminViewModel'
 
@@ -8,6 +10,10 @@ export default function AdminConsole() {
   const {
     stats,
     users,
+    usersTotal,
+    usersOffset,
+    usersPageSize,
+    auditLogs,
     query,
     onlineOnly,
     username,
@@ -16,7 +22,11 @@ export default function AdminConsole() {
     adminUsername,
     adminToken,
     isLoading,
+    isRefreshing,
     error,
+    selectedAction,
+    confirmation,
+    isSubmittingAction,
     formatDateTime,
     refresh,
     setUsername,
@@ -25,15 +35,21 @@ export default function AdminConsole() {
     signOut,
     updateQuery,
     toggleOnlineOnly,
+    previousUsersPage,
+    nextUsersPage,
+    openUserAction,
+    closeUserAction,
+    submitUserAction,
+    setConfirmation,
   } = useAdminViewModel()
 
   const headerActions = adminToken ? (
     <>
       <span className="admin-identity">{adminUsername}</span>
-      <button type="button" onClick={refresh}>
-        {t('admin.refresh')}
+      <button className="admin-header-button" type="button" onClick={refresh} disabled={isRefreshing}>
+        {isRefreshing ? t('admin.refreshing') : t('admin.refresh')}
       </button>
-      <button type="button" onClick={signOut}>
+      <button className="admin-header-button admin-header-button-secondary" type="button" onClick={signOut}>
         {t('admin.signOut')}
       </button>
     </>
@@ -43,7 +59,7 @@ export default function AdminConsole() {
     <main className="admin-shell">
       <header className="admin-topbar">
         <div>
-          <p className="eyebrow">Admin Console</p>
+          <p className="eyebrow">{t('admin.consoleEyebrow')}</p>
           <h1>{t('admin.consoleTitle')}</h1>
         </div>
         <div className="admin-header-actions">{headerActions}</div>
@@ -61,6 +77,8 @@ export default function AdminConsole() {
               <span>{t('admin.username')}</span>
               <input
                 value={username}
+                required
+                maxLength="64"
                 autoComplete="username"
                 placeholder={t('admin.usernamePlaceholder')}
                 onChange={(event) => setUsername(event.target.value)}
@@ -71,6 +89,9 @@ export default function AdminConsole() {
               <input
                 value={password}
                 type="password"
+                required
+                minLength="8"
+                maxLength="72"
                 autoComplete="current-password"
                 placeholder={t('admin.passwordHint')}
                 onChange={(event) => setPassword(event.target.value)}
@@ -83,18 +104,21 @@ export default function AdminConsole() {
               {isLoggingIn ? t('admin.working') : t('admin.signIn')}
             </button>
           </form>
-          {error ? <p className="admin-error">{error}</p> : null}
+          {error ? <p className="admin-error" role="alert">{error}</p> : null}
         </section>
       ) : null}
 
       {adminToken ? (
         <>
-          {error ? <p className="admin-error">{error}</p> : null}
+          {error ? <p className="admin-error" role="alert">{error}</p> : null}
 
           <div className="admin-content">
             <AdminStats stats={stats} formatDateTime={formatDateTime} />
             <AdminUsersTable
               users={users}
+              total={usersTotal}
+              offset={usersOffset}
+              pageSize={usersPageSize}
               query={query}
               onlineOnly={onlineOnly}
               isLoading={isLoading}
@@ -102,9 +126,24 @@ export default function AdminConsole() {
               onSearch={updateQuery}
               onToggleOnline={toggleOnlineOnly}
               onRefresh={refresh}
+              onPreviousPage={previousUsersPage}
+              onNextPage={nextUsersPage}
+              onUserAction={openUserAction}
             />
+            <AdminAuditLog logs={auditLogs} formatDateTime={formatDateTime} />
           </div>
         </>
+      ) : null}
+
+      {selectedAction ? (
+        <AdminUserActionDialog
+          selectedAction={selectedAction}
+          confirmation={confirmation}
+          isSubmitting={isSubmittingAction}
+          onConfirmationChange={setConfirmation}
+          onConfirm={submitUserAction}
+          onClose={closeUserAction}
+        />
       ) : null}
     </main>
   )

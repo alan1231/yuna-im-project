@@ -7,10 +7,10 @@ export default function AdminStats({ stats, formatDateTime }) {
     <section className="admin-section">
       <div className="admin-section-header">
         <div>
-          <p className="eyebrow">System</p>
+          <p className="eyebrow">{t('admin.systemEyebrow')}</p>
           <h2>{t('admin.statsTitle')}</h2>
         </div>
-        {stats ? <time className="admin-checked-at">{formatDateTime(stats.checked_at)}</time> : null}
+        {stats ? <time className="admin-checked-at" dateTime={stats.checked_at}>{formatDateTime(stats.checked_at)}</time> : null}
       </div>
 
       <div className="admin-stat-grid">
@@ -21,10 +21,6 @@ export default function AdminStats({ stats, formatDateTime }) {
         <article className="admin-stat">
           <span>{t('admin.stats.online')}</span>
           <strong>{stats?.users_online ?? '—'}</strong>
-        </article>
-        <article className="admin-stat">
-          <span>Redis Presence</span>
-          <strong>{stats?.redis_online_keys ?? '—'}</strong>
         </article>
         <article className="admin-stat">
           <span>{t('admin.stats.messages')}</span>

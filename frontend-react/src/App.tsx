@@ -16,7 +16,7 @@ import { useAuthStore } from './stores/authStore'
 import type { CurrentUser } from './types/chat'
 
 export default function App() {
-  const [showLaunchScreen, setShowLaunchScreen] = useState(true)
+  const [showLaunchScreen, setShowLaunchScreen] = useState(() => window.location.pathname !== '/admin')
   const [isLaunchLeaving, setIsLaunchLeaving] = useState(false)
 
   useEffect(() => {

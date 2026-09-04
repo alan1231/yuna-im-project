@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestWithSessionAuthRejectsMissingBearerToken(t *testing.T) {
@@ -107,6 +110,42 @@ func TestSessionKeyDoesNotContainToken(t *testing.T) {
 	key := sessionKey(token)
 	if strings.Contains(key, token) {
 		t.Fatalf("session key %q contains the raw token", key)
+	}
+}
+
+func TestDeleteAllSessionsForUser(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	store := NewSessionStore(client)
+	ctx := context.Background()
+
+	first, err := store.Create(ctx, "user_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Create(ctx, "user_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.Create(ctx, "user_b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := "legacy-token"
+	if err := client.Set(ctx, sessionKey(legacy), "user_a", sessionTTL).Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteAllForUser(ctx, "user_a"); err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range []string{first, second, legacy} {
+		if _, err := store.Authenticate(ctx, token); !errors.Is(err, redis.Nil) {
+			t.Fatalf("session %q still exists: %v", token, err)
+		}
+	}
+	if got, err := store.Authenticate(ctx, other); err != nil || got != "user_b" {
+		t.Fatalf("other user session = %q, %v", got, err)
 	}
 }
 

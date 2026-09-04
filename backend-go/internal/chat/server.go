@@ -27,6 +27,7 @@ const (
 	collectionName      = "messages"
 	usersName           = "users"
 	adminsName          = "admins"
+	adminAuditName      = "admin_audit_logs"
 	friendsName         = "friends"
 	friendRequestsName  = "friend_requests"
 	deletedChatsName    = "deleted_conversations"
@@ -46,6 +47,7 @@ var upgrader = websocket.Upgrader{
 type wsClient struct {
 	userID string
 	send   chan websocketEvent
+	close  func()
 
 	mu                   sync.RWMutex
 	activeConversationID string
@@ -120,6 +122,27 @@ func (hub *changeStreamHub) unregister(client *wsClient) {
 		delete(hub.clients, client)
 		close(client.send)
 	}
+}
+
+func (hub *changeStreamHub) disconnectUser(userID string) int {
+	hub.mu.Lock()
+	clients := make([]*wsClient, 0)
+	for client := range hub.clients {
+		if client.userID != userID {
+			continue
+		}
+		delete(hub.clients, client)
+		close(client.send)
+		clients = append(clients, client)
+	}
+	hub.mu.Unlock()
+
+	for _, client := range clients {
+		if client.close != nil {
+			client.close()
+		}
+	}
+	return len(clients)
 }
 
 func (hub *changeStreamHub) run(ctx context.Context) {
@@ -1046,6 +1069,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 	fmt.Printf("React 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
 
 	wsClient := newWSClient(userID, conversationID)
+	wsClient.close = func() { _ = ws.Close() }
 	hub.register(wsClient)
 	defer hub.unregister(wsClient)
 	go writeWebSocketEvents(ctx, ws, wsClient)
@@ -1192,7 +1216,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 func userExists(ctx context.Context, client *mongo.Client, userID string) (bool, error) {
 	count, err := client.Database(databaseName).Collection(usersName).CountDocuments(
-		ctx, bson.M{"user_id": userID}, options.Count().SetLimit(1),
+		ctx, bson.M{"user_id": userID, "disabled": bson.M{"$ne": true}}, options.Count().SetLimit(1),
 	)
 	return count == 1, err
 }
@@ -1889,7 +1913,7 @@ func Run(cfg Config) error {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		handleHealth(w, r, healthCheck)
 	})
-	registerAdminRoutes(mux, client, redisClient, cfg.AdminToken)
+	registerAdminRoutes(mux, client, redisClient, sessions, presence, hub, cfg.AdminToken)
 
 	fmt.Printf("Go WebSocket 伺服器啟動於 %s\n", cfg.ServerAddr)
 	return http.ListenAndServe(cfg.ServerAddr, mux)

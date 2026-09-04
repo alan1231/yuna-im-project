@@ -122,6 +122,30 @@ func TestDeliverVoiceSignalTargetsRecipient(t *testing.T) {
 	}
 }
 
+func TestDisconnectUserClosesOnlyMatchingClients(t *testing.T) {
+	hub := newChangeStreamHub(nil, nil)
+	closed := 0
+	first := newWSClient("user_a", "")
+	first.close = func() { closed++ }
+	second := newWSClient("user_a", "")
+	second.close = func() { closed++ }
+	other := newWSClient("user_b", "")
+	other.close = func() { t.Fatal("other user connection was closed") }
+	hub.register(first)
+	hub.register(second)
+	hub.register(other)
+
+	if got := hub.disconnectUser("user_a"); got != 2 {
+		t.Fatalf("disconnected = %d, want 2", got)
+	}
+	if closed != 2 {
+		t.Fatalf("close calls = %d, want 2", closed)
+	}
+	if len(hub.clients) != 1 {
+		t.Fatalf("remaining clients = %d, want 1", len(hub.clients))
+	}
+}
+
 func TestChronologicalMessagesReversesNewestFirstResults(t *testing.T) {
 	messages := []bson.M{{"text": "newest"}, {"text": "middle"}, {"text": "oldest"}}
 

@@ -47,6 +47,29 @@ func TestParseAdminLimit(t *testing.T) {
 	}
 }
 
+func TestParseAdminOffset(t *testing.T) {
+	if got := parseAdminOffset("50"); got != 50 {
+		t.Fatalf("offset = %d, want 50", got)
+	}
+	if got := parseAdminOffset("-1"); got != 0 {
+		t.Fatalf("negative offset = %d, want 0", got)
+	}
+}
+
+func TestParseAdminSearchQuery(t *testing.T) {
+	got, err := parseAdminSearchQuery("  user.*[1]  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `user\.\*\[1\]` {
+		t.Fatalf("query = %q, want escaped literal", got)
+	}
+
+	if _, err := parseAdminSearchQuery(string(make([]rune, 101))); err == nil {
+		t.Fatal("query longer than 100 characters should fail")
+	}
+}
+
 func TestMapKeys(t *testing.T) {
 	keys := mapKeys(map[string]bool{
 		"user_a": true,

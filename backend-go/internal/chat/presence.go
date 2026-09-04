@@ -70,6 +70,14 @@ func (store *PresenceStore) Disconnect(ctx context.Context, userID string) {
 	}
 }
 
+func (store *PresenceStore) ForceOffline(ctx context.Context, userID string) error {
+	if err := store.redis.Del(ctx, presenceConnectionsKey(userID), presenceOnlineKey(userID)).Err(); err != nil {
+		return err
+	}
+	store.setMongoPresence(ctx, userID, false)
+	return nil
+}
+
 // KeepAlive refreshes Redis TTLs so a process crash eventually clears stale
 // online state without relying on WebSocket cleanup handlers.
 func (store *PresenceStore) KeepAlive(ctx context.Context, userID string) {

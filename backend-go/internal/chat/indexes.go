@@ -29,6 +29,12 @@ func ensureIndexes(ctx context.Context, client *mongo.Client) error {
 	if _, err := db.Collection(adminsName).Indexes().CreateMany(ctx, adminIndexes()); err != nil {
 		return err
 	}
+	if _, err := db.Collection(adminAuditName).Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "created_at", Value: -1}},
+		Options: options.Index().SetName("created_at_desc"),
+	}); err != nil {
+		return err
+	}
 	if _, err := db.Collection(deletedChatsName).Indexes().CreateMany(ctx, deletedConversationIndexes()); err != nil {
 		return err
 	}

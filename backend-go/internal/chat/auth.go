@@ -88,7 +88,12 @@ func (store *SessionStore) Create(ctx context.Context, userID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if err := store.redis.Set(ctx, sessionKey(token), userID, sessionTTL).Err(); err != nil {
+	key := sessionKey(token)
+	pipe := store.redis.TxPipeline()
+	pipe.Set(ctx, key, userID, sessionTTL)
+	pipe.SAdd(ctx, userSessionsKey(userID), key)
+	pipe.Expire(ctx, userSessionsKey(userID), sessionTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return "", err
 	}
 	return token, nil
@@ -99,7 +104,57 @@ func (store *SessionStore) Authenticate(ctx context.Context, token string) (stri
 }
 
 func (store *SessionStore) Delete(ctx context.Context, token string) error {
-	return store.redis.Del(ctx, sessionKey(token)).Err()
+	key := sessionKey(token)
+	userID, err := store.redis.Get(ctx, key).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	pipe := store.redis.TxPipeline()
+	pipe.Del(ctx, key)
+	if userID != "" {
+		pipe.SRem(ctx, userSessionsKey(userID), key)
+	}
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (store *SessionStore) DeleteAllForUser(ctx context.Context, userID string) error {
+	keys, err := store.redis.SMembers(ctx, userSessionsKey(userID)).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+
+	// Sessions created before the reverse index was introduced are discovered
+	// incrementally so account management works across the deployment upgrade.
+	iter := store.redis.Scan(ctx, 0, "auth:session:*", 100).Iterator()
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		seen[key] = true
+	}
+	for iter.Next(ctx) {
+		key := iter.Val()
+		if seen[key] {
+			continue
+		}
+		value, getErr := store.redis.Get(ctx, key).Result()
+		if getErr == nil && value == userID {
+			keys = append(keys, key)
+			seen[key] = true
+		} else if getErr != nil && !errors.Is(getErr, redis.Nil) {
+			return getErr
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return err
+	}
+
+	pipe := store.redis.TxPipeline()
+	if len(keys) > 0 {
+		pipe.Del(ctx, keys...)
+	}
+	pipe.Del(ctx, userSessionsKey(userID))
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 type wsTicketValue struct {
@@ -160,6 +215,10 @@ func authAttemptKey(kind string, identity string, now time.Time) string {
 
 func sessionKey(token string) string {
 	return hashedTokenKey("auth:session:", token)
+}
+
+func userSessionsKey(userID string) string {
+	return "auth:user-sessions:" + userID
 }
 
 func wsTicketKey(ticket string) string {
@@ -261,6 +320,7 @@ type authUser struct {
 	CreatedAt    time.Time `bson:"created_at"`
 	Online       bool      `bson:"online"`
 	LastSeen     time.Time `bson:"last_seen"`
+	Disabled     bool      `bson:"disabled"`
 }
 
 type authResponse struct {
@@ -373,7 +433,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request, client *mongo.Client, s
 	err := client.Database(databaseName).Collection(usersName).FindOne(r.Context(), bson.M{
 		"login_name": normalizeLoginName(req.DisplayName),
 	}).Decode(&user)
-	if err != nil || user.PasswordHash == "" || !passwordMatches(user.PasswordHash, req.Password) {
+	if err != nil || user.Disabled || user.PasswordHash == "" || !passwordMatches(user.PasswordHash, req.Password) {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}

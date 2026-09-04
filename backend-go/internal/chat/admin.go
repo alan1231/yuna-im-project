@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,8 +21,12 @@ type adminServer struct {
 	mongo      *mongo.Client
 	redis      *redis.Client
 	sessions   *SessionStore
+	presence   *PresenceStore
+	hub        *changeStreamHub
 	adminToken string
 }
+
+type authenticatedAdminContextKey struct{}
 
 type adminCredentialsRequest struct {
 	Username string `json:"username"`
@@ -29,11 +34,12 @@ type adminCredentialsRequest struct {
 }
 
 type adminAccount struct {
-	Username     string    `bson:"username"`
-	PasswordHash string    `bson:"password_hash"`
-	Token        string    `bson:"token"`
-	CreatedAt    time.Time `bson:"created_at"`
-	UpdatedAt    time.Time `bson:"updated_at"`
+	ID           interface{} `bson:"_id,omitempty"`
+	Username     string      `bson:"username"`
+	PasswordHash string      `bson:"password_hash"`
+	Token        string      `bson:"token"`
+	CreatedAt    time.Time   `bson:"created_at"`
+	UpdatedAt    time.Time   `bson:"updated_at"`
 }
 
 type adminAccountResponse struct {
@@ -61,6 +67,28 @@ type adminUserResponse struct {
 	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
 	Online      bool      `json:"online" bson:"online"`
 	LastSeen    time.Time `json:"last_seen" bson:"last_seen"`
+	Disabled    bool      `json:"disabled" bson:"disabled"`
+}
+
+type adminUsersResponse struct {
+	Items  []adminUserResponse `json:"items"`
+	Total  int64               `json:"total"`
+	Offset int                 `json:"offset"`
+	Limit  int                 `json:"limit"`
+}
+
+type adminAuditLog struct {
+	AdminUsername string    `json:"admin_username" bson:"admin_username"`
+	Action        string    `json:"action" bson:"action"`
+	Result        string    `json:"result" bson:"result"`
+	TargetUserID  string    `json:"target_user_id" bson:"target_user_id"`
+	TargetName    string    `json:"target_name,omitempty" bson:"target_name,omitempty"`
+	CreatedAt     time.Time `json:"created_at" bson:"created_at"`
+}
+
+type adminUserActionRequest struct {
+	UserID   string `json:"user_id"`
+	Disabled bool   `json:"disabled"`
 }
 
 // registerAdminRoutes keeps the management surface separate from the user chat
@@ -68,11 +96,13 @@ type adminUserResponse struct {
 // user deletion. The ADMIN_TOKEN env value is only used to bootstrap the first
 // admin account through /admin/setup; afterwards authentication is a stored
 // token issued by /admin/login.
-func registerAdminRoutes(mux *http.ServeMux, client *mongo.Client, redisClient *redis.Client, adminToken string) {
+func registerAdminRoutes(mux *http.ServeMux, client *mongo.Client, redisClient *redis.Client, sessions *SessionStore, presence *PresenceStore, hub *changeStreamHub, adminToken string) {
 	admin := &adminServer{
 		mongo:      client,
 		redis:      redisClient,
-		sessions:   NewSessionStore(redisClient),
+		sessions:   sessions,
+		presence:   presence,
+		hub:        hub,
 		adminToken: strings.TrimSpace(adminToken),
 	}
 
@@ -82,6 +112,9 @@ func registerAdminRoutes(mux *http.ServeMux, client *mongo.Client, redisClient *
 	mux.HandleFunc("/admin/stats", admin.withAdminAuth(admin.handleStats))
 	mux.HandleFunc("/admin/users", admin.withAdminAuth(admin.handleUsers))
 	mux.HandleFunc("/admin/users/set-password", admin.withAdminAuth(admin.handleSetUserPassword))
+	mux.HandleFunc("/admin/users/status", admin.withAdminAuth(admin.handleUserStatus))
+	mux.HandleFunc("/admin/users/logout", admin.withAdminAuth(admin.handleForceUserLogout))
+	mux.HandleFunc("/admin/audit-logs", admin.withAdminAuth(admin.handleAuditLogs))
 }
 
 type setUserPasswordRequest struct {
@@ -90,10 +123,6 @@ type setUserPasswordRequest struct {
 }
 
 func (admin *adminServer) handleSetUserPassword(w http.ResponseWriter, r *http.Request) {
-	if admin.adminToken == "" {
-		http.Error(w, "ADMIN_TOKEN is required", http.StatusServiceUnavailable)
-		return
-	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -107,8 +136,12 @@ func (admin *adminServer) handleSetUserPassword(w http.ResponseWriter, r *http.R
 	req.UserID = strings.TrimSpace(req.UserID)
 	var user authUser
 	users := admin.mongo.Database(databaseName).Collection(usersName)
-	if err := users.FindOne(r.Context(), bson.M{"user_id": req.UserID}).Decode(&user); err != nil {
+	if err := users.FindOne(r.Context(), bson.M{"user_id": req.UserID}).Decode(&user); errors.Is(err, mongo.ErrNoDocuments) {
 		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		log.Printf("admin user lookup failed: %v", err)
+		http.Error(w, "load user failed", http.StatusInternalServerError)
 		return
 	}
 	if err := validateCredentials(user.DisplayName, req.Password); err != nil {
@@ -146,6 +179,7 @@ func (admin *adminServer) handleSetUserPassword(w http.ResponseWriter, r *http.R
 func (admin *adminServer) withAdminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		applyCORS(w)
+		w.Header().Set("Cache-Control", "no-store")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -176,7 +210,8 @@ func (admin *adminServer) withAdminAuth(next http.HandlerFunc) http.HandlerFunc 
 			return
 		}
 
-		next(w, r)
+		ctx := context.WithValue(r.Context(), authenticatedAdminContextKey{}, account.Username)
+		next(w, r.WithContext(ctx))
 	}
 }
 
@@ -210,6 +245,17 @@ func (admin *adminServer) handleSetup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	admins := admin.mongo.Database(databaseName).Collection(adminsName)
+	adminCount, err := admins.CountDocuments(r.Context(), bson.M{}, options.Count().SetLimit(1))
+	if err != nil {
+		log.Printf("admin setup count failed: %v", err)
+		http.Error(w, "check admin setup failed", http.StatusInternalServerError)
+		return
+	}
+	if adminCount > 0 {
+		http.Error(w, "admin setup already completed", http.StatusConflict)
+		return
+	}
 
 	var req adminCredentialsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -232,10 +278,11 @@ func (admin *adminServer) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	account := adminAccount{
+		ID:       "primary-admin",
 		Username: username, PasswordHash: hash,
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
-	if _, err := admin.mongo.Database(databaseName).Collection(adminsName).InsertOne(r.Context(), account); err != nil {
+	if _, err := admins.InsertOne(r.Context(), account); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			http.Error(w, "admin username already exists", http.StatusConflict)
 			return
@@ -399,7 +446,7 @@ func (admin *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	friendsTotal, err := db.Collection(friendsName).CountDocuments(ctx, bson.M{})
+	friendRows, err := db.Collection(friendsName).CountDocuments(ctx, bson.M{})
 	if err != nil {
 		log.Printf("admin friends count failed: %v", err)
 		http.Error(w, "count friends failed", http.StatusInternalServerError)
@@ -418,7 +465,7 @@ func (admin *adminServer) handleStats(w http.ResponseWriter, r *http.Request) {
 		UsersOnline:           redisOnlineKeys,
 		MessagesTotal:         messagesTotal,
 		FriendRequestsPending: pendingRequests,
-		FriendsTotal:          friendsTotal,
+		FriendsTotal:          friendRows / 2,
 		RedisOnlineKeys:       redisOnlineKeys,
 		CheckedAt:             time.Now(),
 	})
@@ -438,10 +485,16 @@ func (admin *adminServer) handleUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := parseAdminLimit(r.URL.Query().Get("limit"), 100, 500)
+	limit := parseAdminLimit(r.URL.Query().Get("limit"), 25, 100)
+	offset := parseAdminOffset(r.URL.Query().Get("offset"))
 	onlineOnly := r.URL.Query().Get("online") == "true"
 	filter := bson.M{}
-	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+	query, err := parseAdminSearchQuery(r.URL.Query().Get("q"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if query != "" {
 		filter["$or"] = bson.A{
 			bson.M{"user_id": bson.M{"$regex": query, "$options": "i"}},
 			bson.M{"display_name": bson.M{"$regex": query, "$options": "i"}},
@@ -456,17 +509,24 @@ func (admin *adminServer) handleUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	if onlineOnly {
 		if len(onlineUserIDs) == 0 {
-			writeJSON(w, []adminUserResponse{})
+			writeJSON(w, adminUsersResponse{Items: []adminUserResponse{}, Limit: limit, Offset: offset})
 			return
 		}
 		filter["user_id"] = bson.M{"$in": mapKeys(onlineUserIDs)}
+	}
+	total, err := admin.mongo.Database(databaseName).Collection(usersName).CountDocuments(r.Context(), filter)
+	if err != nil {
+		log.Printf("admin users count failed: %v", err)
+		http.Error(w, "count users failed", http.StatusInternalServerError)
+		return
 	}
 
 	cursor, err := admin.mongo.Database(databaseName).Collection(usersName).Find(
 		r.Context(),
 		filter,
 		options.Find().
-			SetSort(bson.D{{Key: "created_at", Value: -1}}).
+			SetSort(bson.D{{Key: "created_at", Value: -1}, {Key: "_id", Value: -1}}).
+			SetSkip(int64(offset)).
 			SetLimit(int64(limit)),
 	)
 	if err != nil {
@@ -486,7 +546,147 @@ func (admin *adminServer) handleUsers(w http.ResponseWriter, r *http.Request) {
 		users[index].Online = onlineUserIDs[users[index].UserID]
 	}
 
-	writeJSON(w, users)
+	writeJSON(w, adminUsersResponse{Items: users, Total: total, Offset: offset, Limit: limit})
+}
+
+func (admin *adminServer) handleUserStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req adminUserActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	req.UserID = strings.TrimSpace(req.UserID)
+	if req.UserID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	users := admin.mongo.Database(databaseName).Collection(usersName)
+	var user authUser
+	if err := users.FindOne(r.Context(), bson.M{"user_id": req.UserID}).Decode(&user); errors.Is(err, mongo.ErrNoDocuments) {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "load user failed", http.StatusInternalServerError)
+		return
+	}
+
+	if !req.Disabled {
+		if err := admin.sessions.DeleteAllForUser(r.Context(), req.UserID); err != nil {
+			http.Error(w, "revoke sessions failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	now := time.Now()
+	update := bson.M{"$set": bson.M{"disabled": req.Disabled, "updated_at": now}}
+	if req.Disabled {
+		update["$set"].(bson.M)["disabled_at"] = now
+		update["$set"].(bson.M)["online"] = false
+	} else {
+		update["$unset"] = bson.M{"disabled_at": ""}
+	}
+	result, err := users.UpdateOne(r.Context(), bson.M{
+		"user_id": req.UserID, "status": bson.M{"$ne": "deleting"},
+	}, update)
+	if err != nil {
+		http.Error(w, "update user status failed", http.StatusInternalServerError)
+		return
+	}
+	if result.MatchedCount == 0 {
+		http.Error(w, "user deletion is in progress", http.StatusConflict)
+		return
+	}
+
+	if req.Disabled {
+		if err := admin.terminateUserAccess(r.Context(), req.UserID); err != nil {
+			log.Printf("admin disable user cleanup failed: user_id=%s error=%v", req.UserID, err)
+			http.Error(w, "user disabled but session cleanup failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	action := "user_enabled"
+	if req.Disabled {
+		action = "user_disabled"
+	}
+	admin.recordAudit(r, action, "success", user.UserID, user.DisplayName)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (admin *adminServer) handleForceUserLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req adminUserActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	req.UserID = strings.TrimSpace(req.UserID)
+	var user authUser
+	if err := admin.mongo.Database(databaseName).Collection(usersName).FindOne(
+		r.Context(), bson.M{"user_id": req.UserID},
+	).Decode(&user); errors.Is(err, mongo.ErrNoDocuments) {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "load user failed", http.StatusInternalServerError)
+		return
+	}
+	if err := admin.terminateUserAccess(r.Context(), req.UserID); err != nil {
+		http.Error(w, "force logout failed", http.StatusInternalServerError)
+		return
+	}
+	admin.recordAudit(r, "user_force_logout", "success", user.UserID, user.DisplayName)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (admin *adminServer) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cursor, err := admin.mongo.Database(databaseName).Collection(adminAuditName).Find(
+		r.Context(), bson.M{}, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(50),
+	)
+	if err != nil {
+		http.Error(w, "list audit logs failed", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(r.Context())
+	logs := []adminAuditLog{}
+	if err := cursor.All(r.Context(), &logs); err != nil {
+		http.Error(w, "decode audit logs failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, logs)
+}
+
+func (admin *adminServer) terminateUserAccess(ctx context.Context, userID string) error {
+	if err := admin.sessions.DeleteAllForUser(ctx, userID); err != nil {
+		return err
+	}
+	admin.hub.disconnectUser(userID)
+	return admin.presence.ForceOffline(ctx, userID)
+}
+
+func (admin *adminServer) recordAudit(r *http.Request, action, result, userID, displayName string) {
+	username, _ := r.Context().Value(authenticatedAdminContextKey{}).(string)
+	_, err := admin.mongo.Database(databaseName).Collection(adminAuditName).InsertOne(r.Context(), adminAuditLog{
+		AdminUsername: username,
+		Action:        action,
+		Result:        result,
+		TargetUserID:  userID,
+		TargetName:    displayName,
+		CreatedAt:     time.Now(),
+	})
+	if err != nil {
+		log.Printf("admin audit write failed: action=%s user_id=%s error=%v", action, userID, err)
+	}
 }
 
 func (admin *adminServer) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -498,16 +698,57 @@ func (admin *adminServer) handleDeleteUser(w http.ResponseWriter, r *http.Reques
 
 	ctx := r.Context()
 	db := admin.mongo.Database(databaseName)
+	var user authUser
+	if err := db.Collection(usersName).FindOneAndUpdate(ctx, bson.M{
+		"user_id": userID, "status": bson.M{"$ne": "deleting"},
+	}, bson.M{"$set": bson.M{
+		"disabled": true, "status": "deleting", "online": false, "updated_at": time.Now(),
+	}}, options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&user); errors.Is(err, mongo.ErrNoDocuments) {
+		http.Error(w, "user not found or deletion already in progress", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "prepare user deletion failed", http.StatusInternalServerError)
+		return
+	}
+	if err := admin.terminateUserAccess(ctx, userID); err != nil {
+		admin.recordAudit(r, "user_deleted", "failed", user.UserID, user.DisplayName)
+		http.Error(w, "user disabled but access cleanup failed", http.StatusInternalServerError)
+		return
+	}
 
+	session, err := admin.mongo.StartSession()
+	if err != nil {
+		http.Error(w, "start deletion transaction failed", http.StatusInternalServerError)
+		return
+	}
+	defer session.EndSession(ctx)
+	_, err = session.WithTransaction(ctx, func(transactionContext mongo.SessionContext) (interface{}, error) {
+		return nil, admin.deleteUserMongo(transactionContext, userID)
+	})
+	if err != nil {
+		log.Printf("admin delete user transaction failed: %v", err)
+		admin.recordAudit(r, "user_deleted", "failed", user.UserID, user.DisplayName)
+		http.Error(w, "delete user failed", http.StatusInternalServerError)
+		return
+	}
+	admin.recordAudit(r, "user_deleted", "success", user.UserID, user.DisplayName)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (admin *adminServer) deleteUserMongo(ctx mongo.SessionContext, userID string) error {
+	db := admin.mongo.Database(databaseName)
 	if _, err := db.Collection(collectionName).DeleteMany(ctx, bson.M{
 		"$or": bson.A{
 			bson.M{"sender_id": userID},
 			bson.M{"recipient_id": userID},
 		},
 	}); err != nil {
-		log.Printf("admin delete user messages failed: %v", err)
-		http.Error(w, "delete messages failed", http.StatusInternalServerError)
-		return
+		return err
+	}
+	if _, err := db.Collection(collectionName).UpdateMany(ctx, bson.M{"participant_ids": userID}, bson.M{
+		"$pull": bson.M{"participant_ids": userID, "read_by": userID},
+	}); err != nil {
+		return err
 	}
 
 	if _, err := db.Collection(friendsName).DeleteMany(ctx, bson.M{
@@ -516,9 +757,7 @@ func (admin *adminServer) handleDeleteUser(w http.ResponseWriter, r *http.Reques
 			bson.M{"friend_id": userID},
 		},
 	}); err != nil {
-		log.Printf("admin delete user friends failed: %v", err)
-		http.Error(w, "delete friends failed", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	if _, err := db.Collection(friendRequestsName).DeleteMany(ctx, bson.M{
@@ -527,63 +766,60 @@ func (admin *adminServer) handleDeleteUser(w http.ResponseWriter, r *http.Reques
 			bson.M{"to_user_id": userID},
 		},
 	}); err != nil {
-		log.Printf("admin delete user friend requests failed: %v", err)
-		http.Error(w, "delete friend requests failed", http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	cursor, err := db.Collection(groupsName).Find(ctx, bson.M{"member_ids": userID})
 	if err != nil {
-		log.Printf("admin load user groups failed: %v", err)
-		http.Error(w, "load groups failed", http.StatusInternalServerError)
-		return
+		return err
 	}
 	defer cursor.Close(ctx)
 
 	for cursor.Next(ctx) {
 		var group groupResponse
 		if err := cursor.Decode(&group); err != nil {
-			log.Printf("admin decode user group failed: %v", err)
-			continue
+			return err
 		}
 
 		nextMembers := removeString(group.MemberIDs, userID)
 		if len(nextMembers) == 0 {
 			if _, err := db.Collection(groupsName).DeleteOne(ctx, bson.M{"group_id": group.GroupID}); err != nil {
-				log.Printf("admin delete empty group failed: %v", err)
-				http.Error(w, "delete group failed", http.StatusInternalServerError)
-				return
+				return err
+			}
+			if _, err := db.Collection(collectionName).DeleteMany(ctx, bson.M{"conversation_id": group.ConversationID}); err != nil {
+				return err
+			}
+			if _, err := db.Collection(deletedChatsName).DeleteMany(ctx, bson.M{"conversation_id": group.ConversationID}); err != nil {
+				return err
 			}
 			continue
 		}
-
+		set := bson.M{"member_ids": nextMembers}
+		if group.CreatedBy == userID {
+			set["created_by"] = nextMembers[0]
+		}
 		if _, err := db.Collection(groupsName).UpdateOne(
 			ctx,
 			bson.M{"group_id": group.GroupID},
-			bson.M{"$set": bson.M{"member_ids": nextMembers}},
+			bson.M{"$set": set},
 		); err != nil {
-			log.Printf("admin update group members failed: %v", err)
-			http.Error(w, "update group failed", http.StatusInternalServerError)
-			return
+			return err
 		}
 	}
 	if err := cursor.Err(); err != nil {
-		log.Printf("admin iterate user groups failed: %v", err)
-		http.Error(w, "iterate groups failed", http.StatusInternalServerError)
-		return
+		return err
 	}
-
-	if _, err := db.Collection(usersName).DeleteOne(ctx, bson.M{"user_id": userID}); err != nil {
-		log.Printf("admin delete user failed: %v", err)
-		http.Error(w, "delete user failed", http.StatusInternalServerError)
-		return
+	if _, err := db.Collection(deletedChatsName).DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
+		return err
 	}
-
-	if err := admin.redis.Del(ctx, presenceConnectionsKey(userID), presenceOnlineKey(userID)).Err(); err != nil {
-		log.Printf("admin delete redis presence failed: %v", err)
+	result, err := db.Collection(usersName).DeleteOne(ctx, bson.M{"user_id": userID, "status": "deleting"})
+	if err != nil {
+		return err
 	}
-
-	w.WriteHeader(http.StatusNoContent)
+	if result.DeletedCount != 1 {
+		return errors.New("user disappeared during deletion")
+	}
+	return nil
 }
 
 func (admin *adminServer) countRedisOnlineKeys(ctx context.Context) (int64, error) {
@@ -649,6 +885,22 @@ func parseAdminLimit(raw string, fallback int, max int) int {
 	}
 
 	return limit
+}
+
+func parseAdminOffset(raw string) int {
+	offset, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || offset < 0 {
+		return 0
+	}
+	return offset
+}
+
+func parseAdminSearchQuery(raw string) (string, error) {
+	query := strings.TrimSpace(raw)
+	if len([]rune(query)) > 100 {
+		return "", errors.New("search query must be 100 characters or fewer")
+	}
+	return regexp.QuoteMeta(query), nil
 }
 
 func writeJSON(w http.ResponseWriter, value interface{}) {
