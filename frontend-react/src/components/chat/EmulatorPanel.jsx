@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const bundledRomUrl = '/roms/mega-drive-game.md'
@@ -16,7 +16,11 @@ const dataPath = 'https://cdn.emulatorjs.org/stable/data/'
 function buildEmbedDocument(core, gameUrl) {
   const safe = (value) => JSON.stringify(value)
   return `<!doctype html>
-<html><head><style>html,body,#game{width:100%;height:100%;margin:0;background:#050b0d;overflow:hidden}</style></head>
+<html><head><style>
+html,body,#game{width:100%;height:100%;margin:0;background:#050b0d;overflow:hidden}
+#game:fullscreen,.ejs_game:fullscreen,.ejs_canvas:fullscreen{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;background:#050b0d}
+.ejs_canvas:fullscreen{object-fit:fill!important}
+</style></head>
 <body><div id="game"></div><script>
 window.EJS_player = '#game';
 window.EJS_core = ${safe(core)};
@@ -30,8 +34,6 @@ export default function EmulatorPanel({ onClose }) {
   const [systemId, setSystemId] = useState('segaMD')
   const [rom, setRom] = useState(null)
   const [useBundledRom, setUseBundledRom] = useState(false)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const modalRef = useRef(null)
 
   const system = systems.find((item) => item.id === systemId) || systems[0]
   const selectedRomUrl = useMemo(() => (rom ? URL.createObjectURL(rom) : ''), [rom])
@@ -41,33 +43,15 @@ export default function EmulatorPanel({ onClose }) {
     if (selectedRomUrl) URL.revokeObjectURL(selectedRomUrl)
   }, [selectedRomUrl])
 
-  useEffect(() => {
-    const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', syncFullscreen)
-    return () => document.removeEventListener('fullscreenchange', syncFullscreen)
-  }, [])
-
-  const toggleFullscreen = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen()
-      else await modalRef.current?.requestFullscreen?.()
-    } catch (error) {
-      console.error('Fullscreen failed:', error)
-    }
-  }
-
   return (
     <div className="modal-backdrop emulator-backdrop" role="dialog" aria-modal="true" aria-labelledby="emulator-title">
-      <section className="emulator-modal" ref={modalRef}>
+      <section className="emulator-modal">
         <header className="modal-header">
           <div>
             <p className="eyebrow">EmulatorJS</p>
             <h3 id="emulator-title">{t('chat.emulatorTitle')}</h3>
           </div>
           <div className="emulator-header-actions">
-            <button type="button" className="emulator-fullscreen-button" onClick={toggleFullscreen}>
-              {isFullscreen ? t('chat.emulatorExitFullscreen') : t('chat.emulatorFullscreen')}
-            </button>
             <button type="button" className="modal-close" onClick={onClose} aria-label={t('chat.emulatorClose')}>×</button>
           </div>
         </header>
