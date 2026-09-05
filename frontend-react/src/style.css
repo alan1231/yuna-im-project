@@ -1219,16 +1219,22 @@ button {
 .emulator-empty { display: grid; width: 100%; height: 100%; place-items: center; color: var(--muted); background: #050b0d; }
 .emulator-note { margin: 0; color: var(--muted); font-size: 12px; }
 .emulator-header-actions { display: flex; align-items: center; gap: 8px; }
+.emulator-controls-toggle { min-height: 32px; padding: 5px 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.emulator-controls-toggle:hover { color: #fff; background: #6941c6; border-color: #6941c6; }
+.emulator-controls-collapsed label { display: none; }
 .call-quality { display: block; margin-top: 4px; font-size: 11px; font-weight: 700; }
 .call-quality-good { color: #35c98a; }
 .call-quality-fair { color: #f4cf58; }
 .call-quality-poor { color: #ef5350; }
 
 @media (max-width: 768px) {
-  .emulator-backdrop { padding: 0; place-items: stretch; }
+  .emulator-backdrop { padding: 0; place-items: start stretch; overflow-y: auto; }
   .emulator-modal {
     width: 100%;
-    height: 100%;
+    height: auto;
+    min-height: 100svh;
+    grid-template-rows: auto auto auto auto;
+    align-content: start;
     border: 0;
     border-radius: 0;
     padding: 10px;
@@ -1237,7 +1243,7 @@ button {
   .emulator-controls select,
   .emulator-controls input,
   .emulator-load-button { width: 100%; box-sizing: border-box; }
-  .emulator-stage { min-height: 0; }
+  .emulator-stage { width: 100%; aspect-ratio: 4 / 3; }
 }
 
 .sidebar-search {

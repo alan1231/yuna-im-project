@@ -34,6 +34,7 @@ export default function EmulatorPanel({ onClose }) {
   const [systemId, setSystemId] = useState('segaMD')
   const [rom, setRom] = useState(null)
   const [useBundledRom, setUseBundledRom] = useState(false)
+  const [areControlsCollapsed, setAreControlsCollapsed] = useState(false)
 
   const system = systems.find((item) => item.id === systemId) || systems[0]
   const selectedRomUrl = useMemo(() => (rom ? URL.createObjectURL(rom) : ''), [rom])
@@ -52,11 +53,21 @@ export default function EmulatorPanel({ onClose }) {
             <h3 id="emulator-title">{t('chat.emulatorTitle')}</h3>
           </div>
           <div className="emulator-header-actions">
+            <button
+              type="button"
+              className="emulator-controls-toggle"
+              aria-expanded={!areControlsCollapsed}
+              aria-controls="emulator-controls"
+              onClick={() => setAreControlsCollapsed((current) => !current)}
+            >
+              {areControlsCollapsed ? t('chat.emulatorExpandControls') : t('chat.emulatorCollapseControls')}
+              <span aria-hidden="true">{areControlsCollapsed ? '⌄' : '⌃'}</span>
+            </button>
             <button type="button" className="modal-close" onClick={onClose} aria-label={t('chat.emulatorClose')}>×</button>
           </div>
         </header>
 
-        <div className="emulator-controls">
+        <div id="emulator-controls" className={`emulator-controls ${areControlsCollapsed ? 'emulator-controls-collapsed' : ''}`}>
           <label>
             <span>{t('chat.emulatorSystem')}</span>
             <select value={systemId} onChange={(event) => { setSystemId(event.target.value); setRom(null); setUseBundledRom(false) }}>
