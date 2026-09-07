@@ -17,6 +17,7 @@ import {
   wakeBackend as wakeBackendApi,
 } from '../api/chatApi'
 import { WS_URL } from '../config/api'
+import { useAuthStore } from '../stores/authStore'
 const MAX_MESSAGES_PER_CONVERSATION = 200
 const MAX_CACHED_CONVERSATIONS = 30
 
@@ -174,7 +175,8 @@ export const useChatViewModel = (currentUser) => {
   const queuedMessagesRef = useRef([])
   const shouldReconnectRef = useRef(false)
   const isConnectingRef = useRef(false)
-  const hasConnectedRef = useRef(false)
+  const historyGenerationRef = useRef(0)
+  const authenticationFailedRef = useRef(false)
   const voiceRemoteRef = useRef(null)
   const videoRemoteRef = useRef(null)
   const videoLocalRef = useRef(null)
@@ -184,7 +186,7 @@ export const useChatViewModel = (currentUser) => {
   const conversationCacheAccessRef = useRef(new Map())
 
   const activeRoom = useMemo(
-    () => rooms.find((room) => room.id === activeRoomId) || rooms[0],
+    () => rooms.find((room) => room.id === activeRoomId),
     [activeRoomId, rooms],
   )
   const messages = messagesByConversation[activeRoom?.conversationId] || []
@@ -192,16 +194,17 @@ export const useChatViewModel = (currentUser) => {
 
   useEffect(() => {
     roomsRef.current = rooms
+    if (!activeRoomIdRef.current && rooms.length) {
+      activeRoomIdRef.current = rooms[0].id
+      setActiveRoomId(rooms[0].id)
+    }
   }, [rooms])
-  useEffect(() => {
-    activeRoomIdRef.current = activeRoomId
-  }, [activeRoomId])
   useEffect(() => {
     availableUsersRef.current = availableUsers
   }, [availableUsers])
 
   const getActiveRoom = useCallback(() => {
-    return roomsRef.current.find((room) => room.id === activeRoomIdRef.current) || roomsRef.current[0]
+    return roomsRef.current.find((room) => room.id === activeRoomIdRef.current)
   }, [])
 
   const scheduleReconnect = useCallback(() => {
@@ -307,6 +310,7 @@ export const useChatViewModel = (currentUser) => {
     updateRoom((currentRooms) =>
       currentRooms.map((room) => {
         if (room.conversationId !== conversationId) return room
+        if (options.isHistory && getTimeMs(message.sentAt) < (room.lastMessageTimeMs || 0)) return room
 
         return {
           ...room,
@@ -358,7 +362,9 @@ export const useChatViewModel = (currentUser) => {
       const conversationMessages = currentMessages[conversationId] || []
       const messagesWithGameResponse = applyBlackjackInviteResponse(conversationMessages, message)
 
-      const nextConversationMessages = [...messagesWithGameResponse, message].slice(-MAX_MESSAGES_PER_CONVERSATION)
+      const nextConversationMessages = [...messagesWithGameResponse, message]
+        .sort((a, b) => getTimeMs(a.sentAt) - getTimeMs(b.sentAt))
+        .slice(-MAX_MESSAGES_PER_CONVERSATION)
       if (nextConversationMessages.length !== conversationMessages.length + 1) {
         messageKeysByConversationRef.current.set(
           conversationId,
@@ -566,6 +572,8 @@ export const useChatViewModel = (currentUser) => {
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false
+    historyGenerationRef.current += 1
+    setIsConnected(false)
     if (reconnectTimerRef.current) {
       window.clearTimeout(reconnectTimerRef.current)
       reconnectTimerRef.current = null
@@ -582,6 +590,7 @@ export const useChatViewModel = (currentUser) => {
 
   const connect = useCallback(async () => {
     if (
+      authenticationFailedRef.current ||
       isConnectingRef.current ||
       socketRef.current?.readyState === WebSocket.OPEN ||
       socketRef.current?.readyState === WebSocket.CONNECTING
@@ -608,6 +617,16 @@ export const useChatViewModel = (currentUser) => {
       socket = new WebSocket(url)
       socketRef.current = socket
     } catch (error) {
+      if (error.status === 401) {
+        authenticationFailedRef.current = true
+        queuedMessagesRef.current = []
+        disconnect()
+        if (useAuthStore.getState().currentUser?.token === currentUser.token) {
+          useAuthStore.getState().clearCurrentUser()
+          queryClient.clear()
+        }
+        return
+      }
       console.error('WebSocket ticket failed:', error)
       setConnectionError(t('chat.errors.connectionFailed', { url: WS_URL }))
       scheduleReconnect()
@@ -617,21 +636,29 @@ export const useChatViewModel = (currentUser) => {
     }
 
     socket.onopen = () => {
+      if (socketRef.current !== socket || !shouldReconnectRef.current) return
       setIsConnected(true)
       setConnectionError('')
       reconnectAttemptRef.current = 0
       flushQueuedMessages()
       sendActiveConversation()
-      if (hasConnectedRef.current) {
-        reloadChatDataRef.current?.().catch((error) => {
-          console.error('Chat resync after reconnect failed:', error)
-        })
-      }
-      hasConnectedRef.current = true
+      historyGenerationRef.current += 1
+      loadedConversationIdsRef.current.clear()
+      Promise.all([
+        queryClient.cancelQueries({ queryKey: ['messages', currentUser.id] }),
+        ...['users', 'friends', 'groups', 'conversations'].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key, currentUser.id], refetchType: 'none' })),
+      ]).then(() => {
+        if (socketRef.current !== socket) return
+        return reloadChatDataRef.current?.()
+      }).catch((error) => {
+        console.error('Chat resync after reconnect failed:', error)
+      })
       console.log('Connected to Go backend')
     }
 
     socket.onmessage = (event) => {
+      if (socketRef.current !== socket) return
       try {
         const data = JSON.parse(event.data)
         handleWebSocketEvent(data).catch((error) => {
@@ -653,7 +680,7 @@ export const useChatViewModel = (currentUser) => {
       setIsConnected(false)
       scheduleReconnect()
     }
-  }, [addSystemMessage, flushQueuedMessages, getActiveRoom, handleWebSocketEvent, scheduleReconnect, sendActiveConversation, t])
+  }, [addSystemMessage, currentUser.id, currentUser.token, disconnect, flushQueuedMessages, getActiveRoom, handleWebSocketEvent, queryClient, scheduleReconnect, sendActiveConversation, t])
 
   useEffect(() => {
     connectRef.current = connect
@@ -666,26 +693,34 @@ export const useChatViewModel = (currentUser) => {
 
   const loadMessagesForRoom = useCallback(async (room) => {
     if (!room?.conversationId || loadedConversationIdsRef.current.has(room.conversationId)) return
+    const generation = historyGenerationRef.current
 
     try {
       const historyMessages = await queryClient.fetchQuery({
         queryKey: chatQueryKeys.messages(currentUser.id, room.conversationId),
         queryFn: () => fetchMessages({ userId: currentUser.id, conversationId: room.conversationId }),
-        staleTime: 10_000,
+        staleTime: 0,
       })
+      if (generation !== historyGenerationRef.current) return
       historyMessages.forEach((message) => appendMessage(message, { isHistory: true }))
       updateRoom((currentRooms) =>
         currentRooms.map((item) =>
-          item.conversationId === room.conversationId ? { ...item, unreadCount: 0 } : item,
+          item.conversationId === room.conversationId && item.id === activeRoomIdRef.current ? { ...item, unreadCount: 0 } : item,
         ),
       )
       loadedConversationIdsRef.current.add(room.conversationId)
       touchConversationCache(room.conversationId)
     } catch (error) {
+      if (generation !== historyGenerationRef.current) return
       console.error('Message history load failed:', error)
       setRoomError(t('chat.errors.historyFailed'))
     }
   }, [appendMessage, currentUser.id, queryClient, t, touchConversationCache, updateRoom])
+
+  useEffect(() => {
+    loadMessagesForRoom(getActiveRoom())
+    sendActiveConversation()
+  }, [activeRoomId, getActiveRoom, loadMessagesForRoom, sendActiveConversation])
 
   const loadUsers = useCallback(async () => {
     try {
@@ -825,11 +860,11 @@ export const useChatViewModel = (currentUser) => {
       conversationCacheAccessRef.current.delete(room.conversationId)
 
       const fallbackRoom = roomsRef.current[0] || initialRooms[0]
-      activeRoomIdRef.current = fallbackRoom.id
-      setActiveRoomId(fallbackRoom.id)
+      activeRoomIdRef.current = fallbackRoom?.id || ''
+      setActiveRoomId(fallbackRoom?.id || '')
       setUserInput('')
       setFileAttachment(null)
-      touchConversationCache(fallbackRoom.conversationId)
+      touchConversationCache(fallbackRoom?.conversationId)
       await loadGroups()
       await loadConversations()
       window.setTimeout(sendActiveConversation, 0)
@@ -1006,6 +1041,7 @@ export const useChatViewModel = (currentUser) => {
   }
 
   const sendMessage = useCallback((presetText = '') => {
+    if (authenticationFailedRef.current) return
     const text = String(presetText || userInput).trim()
     const attachment = presetText ? null : fileAttachment
     if (!text && !attachment) return

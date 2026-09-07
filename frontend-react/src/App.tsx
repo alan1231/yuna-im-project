@@ -58,6 +58,10 @@ function ChatRoute() {
   const [accountError, setAccountError] = useState('')
   const [isRestoringSession, setIsRestoringSession] = useState(Boolean(currentUser))
 
+  useEffect(() => {
+    if (!currentUser) queryClient.clear()
+  }, [currentUser, queryClient])
+
   const persistUser = (user: CurrentUser) => {
     setCurrentUser(user)
   }
@@ -68,16 +72,23 @@ function ChatRoute() {
       return
     }
     fetchCurrentUser()
-      .then((user) => persistUser({
-        id: user.user_id,
-        displayName: user.display_name,
-        token: currentUser.token,
-        avatarUrl: user.avatar_url || currentUser.avatarUrl,
-        avatarStyle: currentUser.avatarStyle,
-        avatarSeed: currentUser.avatarSeed,
-        avatarBackground: currentUser.avatarBackground,
-      }))
-      .catch(() => clearCurrentUser())
+      .then((user) => {
+        if (useAuthStore.getState().currentUser?.token !== currentUser.token) return
+        persistUser({
+          id: user.user_id,
+          displayName: user.display_name,
+          token: currentUser.token,
+          avatarUrl: user.avatar_url || currentUser.avatarUrl,
+          avatarStyle: currentUser.avatarStyle,
+          avatarSeed: currentUser.avatarSeed,
+          avatarBackground: currentUser.avatarBackground,
+        })
+      })
+      .catch((error) => {
+        if (error.status === 401 && useAuthStore.getState().currentUser?.token === currentUser.token) {
+          clearCurrentUser()
+        }
+      })
       .finally(() => setIsRestoringSession(false))
     // The persisted token only needs verification once when the app starts.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -177,23 +177,39 @@ func (store *SessionStore) CreateWSTicket(ctx context.Context, userID string, se
 	return ticket, nil
 }
 
-func (store *SessionStore) ConsumeWSTicket(ctx context.Context, ticket string) (string, error) {
+func (store *SessionStore) ConsumeWSTicket(ctx context.Context, ticket string) (wsTicketValue, error) {
 	if strings.TrimSpace(ticket) == "" {
-		return "", errors.New("missing websocket ticket")
+		return wsTicketValue{}, errors.New("missing websocket ticket")
 	}
 	key := wsTicketKey(ticket)
 	value, err := store.redis.GetDel(ctx, key).Bytes()
 	if err != nil {
-		return "", err
+		return wsTicketValue{}, err
 	}
 	var ticketValue wsTicketValue
 	if err := json.Unmarshal(value, &ticketValue); err != nil {
-		return "", err
+		return wsTicketValue{}, err
 	}
-	if exists, err := store.redis.Exists(ctx, ticketValue.SessionKey).Result(); err != nil || exists != 1 {
-		return "", errors.New("websocket session expired")
+	if err := store.ValidateWSSession(ctx, ticketValue); err != nil {
+		return wsTicketValue{}, err
 	}
-	return ticketValue.UserID, nil
+	return ticketValue, nil
+}
+
+func (store *SessionStore) ValidateWSSession(ctx context.Context, session wsTicketValue) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if session.UserID == "" || !strings.HasPrefix(session.SessionKey, "auth:session:") {
+		return errors.New("invalid websocket session")
+	}
+	userID, err := store.redis.Get(ctx, session.SessionKey).Result()
+	if err != nil {
+		return err
+	}
+	if userID != session.UserID {
+		return errors.New("websocket session owner mismatch")
+	}
+	return nil
 }
 
 func (store *SessionStore) AllowAuthAttempt(ctx context.Context, kind string, identity string, limit int) (bool, error) {

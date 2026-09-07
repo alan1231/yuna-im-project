@@ -38,6 +38,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
   const callRoomRef = useRef(null)
   const isCallerRef = useRef(false)
   const qualityTimerRef = useRef(null)
+  const generationRef = useRef(0)
 
   const signalType = useCallback((suffix) => `${media}_${suffix}`, [media])
 
@@ -53,15 +54,19 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
         return false
       }
 
-      socket.send(
-        JSON.stringify({
-          type,
-          sender_id: currentUserId,
-          recipient_id: room.recipientId,
-          conversation_id: room.conversationId,
-          ...payload,
-        }),
-      )
+      try {
+        socket.send(
+          JSON.stringify({
+            type,
+            sender_id: currentUserId,
+            recipient_id: room.recipientId,
+            conversation_id: room.conversationId,
+            ...payload,
+          }),
+        )
+      } catch {
+        return false
+      }
       return true
     },
     [currentUserId, getSocket],
@@ -180,6 +185,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
   }, [stopRingtone])
 
   const cleanup = useCallback(() => {
+    generationRef.current += 1
     clearCallTimeout()
     clearRecovery()
     stopQualityMonitor()
@@ -194,6 +200,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     pendingOfferRef.current = null
     callRoomRef.current = null
     isCallerRef.current = false
+    setCall(createInitialCallState())
     if (remoteRef.current) {
       remoteRef.current.srcObject = null
     }
@@ -265,10 +272,15 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
 
   const ensureLocalStream = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current
+    const generation = generationRef.current
 
     const constraints =
       media === 'video' ? { audio: true, video: true } : { audio: true, video: false }
     const stream = await window.navigator.mediaDevices.getUserMedia(constraints)
+    if (generation !== generationRef.current) {
+      stream.getTracks().forEach((track) => track.stop())
+      return null
+    }
     localStreamRef.current = stream
     if (localRef?.current) {
       localRef.current.srcObject = stream
@@ -351,16 +363,19 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     const room = getActiveRoom()
     if (!room || room.isGroup) return
 
+    cleanup()
+    const generation = generationRef.current
     try {
-      cleanup()
       callRoomRef.current = room
       isCallerRef.current = true
       const stream = await ensureLocalStream()
+      if (!stream || generation !== generationRef.current) return
       const peer = createPeerConnection(room)
       stream.getTracks().forEach((track) => peer.addTrack(track, stream))
       const offer = await peer.createOffer()
       await peer.setLocalDescription(offer)
-      if (!sendSignal(signalType('offer'), room, { offer })) return
+      if (generation !== generationRef.current) return
+      if (!sendSignal(signalType('offer'), room, { offer })) throw new Error('Call signaling unavailable')
 
       setCall({
         status: 'calling',
@@ -376,6 +391,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
         setCall(createInitialCallState())
       }, CALL_TIMEOUT_MS)
     } catch (error) {
+      if (generation !== generationRef.current) return
       console.error('Start call failed:', error)
       cleanup()
       setCall(createInitialCallState())
@@ -388,17 +404,20 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
     const room = offer ? findRoomForSignal(offer) : null
     if (!offer || !room) return
 
+    cleanup()
+    const generation = generationRef.current
     try {
-      cleanup()
       callRoomRef.current = room
       isCallerRef.current = false
       const stream = await ensureLocalStream()
+      if (!stream || generation !== generationRef.current) return
       const peer = createPeerConnection(room)
       stream.getTracks().forEach((track) => peer.addTrack(track, stream))
       await peer.setRemoteDescription(new RTCSessionDescription(offer.offer))
       const answer = await peer.createAnswer()
       await peer.setLocalDescription(answer)
-      sendSignal(signalType('answer'), room, { answer })
+      if (generation !== generationRef.current) return
+      if (!sendSignal(signalType('answer'), room, { answer })) throw new Error('Call signaling unavailable')
       pendingOfferRef.current = null
       setCall({
         status: 'connected',
@@ -409,6 +428,7 @@ export function useMediaCall({ media, currentUserId, getSocket, getRooms, getAct
         isCameraOn: media === 'video',
       })
     } catch (error) {
+      if (generation !== generationRef.current) return
       console.error('Accept call failed:', error)
       cleanup()
       setCall(createInitialCallState())

@@ -1032,11 +1032,12 @@ func handleLeaveGroup(w http.ResponseWriter, r *http.Request, client *mongo.Clie
 // handleConnections owns one WebSocket session: it registers presence, joins
 // the shared Change Stream hub, and persists incoming messages.
 func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Client, redisClient *redis.Client, sessions *SessionStore, presence *PresenceStore, hub *changeStreamHub) {
-	userID, err := sessions.ConsumeWSTicket(r.Context(), r.URL.Query().Get("ticket"))
+	session, err := sessions.ConsumeWSTicket(r.Context(), r.URL.Query().Get("ticket"))
 	if err != nil {
 		http.Error(w, "invalid websocket ticket", http.StatusUnauthorized)
 		return
 	}
+	userID := session.UserID
 	conversationID := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
 	exists, err := userExists(r.Context(), client, userID)
 	if err != nil {
@@ -1057,21 +1058,40 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	go closeDeletedUserConnection(ctx, client, userID, ws)
+	go watchWebSocketAccess(ctx, func(checkCtx context.Context) error {
+		if err := sessions.ValidateWSSession(checkCtx, session); err != nil {
+			return err
+		}
+		exists, err := userExists(checkCtx, client, userID)
+		if err == nil && !exists {
+			return errors.New("user access revoked")
+		}
+		return err
+	}, func() { cancel(); _ = ws.Close() }, 10*time.Second)
 
 	if err := presence.Connect(ctx, userID); err != nil {
 		log.Printf("Redis 使用者在線狀態設定失敗: %v", err)
 		return
 	}
-	defer presence.Disconnect(context.Background(), userID)
+	defer func() {
+		cancel()
+		_ = ws.Close()
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cleanupCancel()
+		presence.Disconnect(cleanupCtx, userID)
+	}()
 	go presence.KeepAlive(ctx, userID)
 
 	fmt.Printf("React 前端已連線: user_id=%s conversation_id=%s\n", userID, conversationID)
 
 	wsClient := newWSClient(userID, conversationID)
-	wsClient.close = func() { _ = ws.Close() }
+	wsClient.close = func() { cancel(); _ = ws.Close() }
 	hub.register(wsClient)
 	defer hub.unregister(wsClient)
+	// Revocation may have happened after ticket consumption but before registration.
+	if err := sessions.ValidateWSSession(ctx, session); err != nil {
+		return
+	}
 	go writeWebSocketEvents(ctx, ws, wsClient)
 	hub.sendActiveBlackjackGames(ctx, userID)
 	if conversationID != "" {
@@ -1084,6 +1104,9 @@ func handleConnections(w http.ResponseWriter, r *http.Request, client *mongo.Cli
 		var msg bson.M
 		if err := ws.ReadJSON(&msg); err != nil {
 			log.Printf("WebSocket 連線結束: %v", err)
+			return
+		}
+		if err := sessions.ValidateWSSession(ctx, session); err != nil {
 			return
 		}
 
@@ -1221,17 +1244,20 @@ func userExists(ctx context.Context, client *mongo.Client, userID string) (bool,
 	return count == 1, err
 }
 
-func closeDeletedUserConnection(ctx context.Context, client *mongo.Client, userID string, ws *websocket.Conn) {
-	ticker := time.NewTicker(10 * time.Second)
+func watchWebSocketAccess(ctx context.Context, validate func(context.Context) error, closeConnection func(), interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			exists, err := userExists(ctx, client, userID)
-			if err == nil && !exists {
-				ws.Close()
+			checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			err := validate(checkCtx)
+			cancel()
+			// Fail closed on dependency failure; clients can retry with a new ticket.
+			if err != nil {
+				closeConnection()
 				return
 			}
 		}
@@ -1784,9 +1810,10 @@ func Run(cfg Config) error {
 		return err
 	}
 	redisOptions := &redis.Options{
-		Addr:     cfg.RedisAddr,
-		Username: cfg.RedisUsername,
-		Password: cfg.RedisPassword,
+		Addr:                  cfg.RedisAddr,
+		Username:              cfg.RedisUsername,
+		Password:              cfg.RedisPassword,
+		ContextTimeoutEnabled: true,
 	}
 	if cfg.RedisTLS {
 		redisOptions.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}

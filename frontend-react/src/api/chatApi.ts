@@ -27,7 +27,7 @@ const withAuth = (init: RequestInit = {}): RequestInit => {
 }
 
 const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> => {
-  const response = await fetch(input, withAuth(init))
+  const response = await authenticatedFetch(input, init)
   if (!response.ok) {
     const error = new Error(`Request failed: ${response.status}`) as Error & { status?: number }
     error.status = response.status
@@ -38,12 +38,24 @@ const requestJson = async <T>(input: RequestInfo | URL, init?: RequestInit): Pro
 }
 
 const requestOk = async (input: RequestInfo | URL, init?: RequestInit): Promise<void> => {
-  const response = await fetch(input, withAuth(init))
+  const response = await authenticatedFetch(input, init)
   if (!response.ok) {
     const error = new Error(`Request failed: ${response.status}`) as Error & { status?: number }
     error.status = response.status
     throw error
   }
+}
+
+const authenticatedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const request = withAuth(init)
+  const authorization = new Headers(request.headers).get('Authorization')
+  const response = await fetch(input, request)
+  const currentToken = useAuthStore.getState().currentUser?.token
+  // A delayed response from an old session must not sign out a newer login.
+  if (response.status === 401 && currentToken && authorization === `Bearer ${currentToken}`) {
+    useAuthStore.getState().clearCurrentUser()
+  }
+  return response
 }
 
 const urlWithUser = (path: string, userId?: string) => {
