@@ -224,6 +224,7 @@ export default function ChatWindow({ currentUser, onLogout }: ChatWindowProps) {
           <BlackjackPanel game={game} currentUserId={currentUser.id} opponentOnline={typedActiveRoom.online} pendingAction={pendingGameAction} onAction={sendGameAction} onClose={() => closeGamePanel(typedActiveRoom.conversationId)} />
 
           <ChatComposer
+            key={`${currentUser.id}:${typedActiveRoom.conversationId}`}
             value={userInput}
             onChange={setUserInput}
             fileAttachment={fileAttachment}

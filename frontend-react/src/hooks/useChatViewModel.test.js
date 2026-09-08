@@ -61,6 +61,17 @@ it('pins the initial room while incoming messages reorder rooms and a draft is b
   expect(JSON.parse(sockets[0].send.mock.calls.at(-1)[0]).recipient_id).toBe('a')
 })
 
+it('rejects an old room attachment callback even before the room switch renders', async () => {
+  const attachInA = model.attachFile
+  await act(async () => {
+    model.selectRoom('b')
+    attachInA({ url: 'data:old', name: 'a.png' })
+  })
+  expect(model.fileAttachment).toBeNull()
+  await act(async () => model.attachFile({ url: 'data:new', name: 'b.png' }))
+  expect(model.fileAttachment.name).toBe('b.png')
+})
+
 it('backfills reconnect history, merges live messages chronologically and invalidates inactive rooms', async () => {
   await open(sockets[0])
   await act(async () => model.selectRoom('b'))

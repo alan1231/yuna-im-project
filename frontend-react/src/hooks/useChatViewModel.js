@@ -1033,6 +1033,7 @@ export const useChatViewModel = (currentUser) => {
   }, [currentUser.id, loadConversations, queryClient, t])
 
   const attachFile = (file) => {
+    if (activeRoomId !== activeRoomIdRef.current) return
     setFileAttachment(file)
   }
 

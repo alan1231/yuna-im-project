@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -57,6 +57,10 @@ export default function ChatComposer({
 }) {
   const { t } = useTranslation()
   const fileInput = useRef(null)
+  const fileGeneration = useRef(0)
+  const composing = useRef(false)
+  const compositionEndedAt = useRef(-Infinity)
+  useLayoutEffect(() => () => { fileGeneration.current += 1 }, [])
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [fileError, setFileError] = useState('')
   const [isProcessingFile, setIsProcessingFile] = useState(false)
@@ -100,8 +104,9 @@ export default function ChatComposer({
     }
   }
 
-  const attachBlob = async ({ blob, name, type, compressed = false }) => {
+  const attachBlob = async ({ blob, name, type, compressed = false }, generation) => {
     const url = await blobToDataUrl(blob)
+    if (generation !== fileGeneration.current) return
     setFileError(compressed ? t('chat.errors.imageCompressed') : '')
     onAttachFile({
       url,
@@ -115,6 +120,7 @@ export default function ChatComposer({
     if (!allowAttachments) return
     if (!file) return
 
+    const generation = ++fileGeneration.current
     setIsProcessingFile(true)
     setFileError('')
 
@@ -124,7 +130,7 @@ export default function ChatComposer({
           blob: file,
           name: file.name,
           type: file.type,
-        })
+        }, generation)
         return
       }
 
@@ -134,6 +140,7 @@ export default function ChatComposer({
       }
 
       const compressedBlob = await compressImageFile(file)
+      if (generation !== fileGeneration.current) return
       if (compressedBlob.size > MAX_FILE_SIZE_BYTES) {
         setFileError(t('chat.errors.imageStillTooLarge'))
         return
@@ -144,12 +151,13 @@ export default function ChatComposer({
         name: compressedImageName(file.name),
         type: compressedBlob.type || 'image/jpeg',
         compressed: true,
-      })
+      }, generation)
     } catch (error) {
+      if (generation !== fileGeneration.current) return
       console.error('File processing failed:', error)
       setFileError(t('chat.errors.fileProcessFailed'))
     } finally {
-      setIsProcessingFile(false)
+      if (generation === fileGeneration.current) setIsProcessingFile(false)
     }
   }
 
@@ -232,7 +240,15 @@ export default function ChatComposer({
             placeholder={placeholder || t('chat.inputPlaceholder')}
             autoComplete="off"
             onChange={(event) => onChange(event.target.value)}
+            onCompositionStart={() => { composing.current = true }}
+            onCompositionEnd={() => {
+              composing.current = false
+              compositionEndedAt.current = performance.now()
+            }}
             onKeyDown={(event) => {
+              // Safari can end composition before the confirming Enter keydown.
+              if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229
+                || (event.key === 'Enter' && performance.now() - compositionEndedAt.current < 100)) return
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault()
                 if (canSend && !isProcessingFile) event.currentTarget.form?.requestSubmit()

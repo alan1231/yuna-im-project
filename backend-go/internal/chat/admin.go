@@ -700,43 +700,64 @@ func (admin *adminServer) handleDeleteUser(w http.ResponseWriter, r *http.Reques
 	db := admin.mongo.Database(databaseName)
 	var user authUser
 	if err := db.Collection(usersName).FindOneAndUpdate(ctx, bson.M{
-		"user_id": userID, "status": bson.M{"$ne": "deleting"},
+		"user_id": userID,
 	}, bson.M{"$set": bson.M{
 		"disabled": true, "status": "deleting", "online": false, "updated_at": time.Now(),
 	}}, options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&user); errors.Is(err, mongo.ErrNoDocuments) {
-		http.Error(w, "user not found or deletion already in progress", http.StatusNotFound)
+		// DELETE is idempotent, including a retry after a lost success response.
+		w.WriteHeader(http.StatusNoContent)
 		return
 	} else if err != nil {
 		http.Error(w, "prepare user deletion failed", http.StatusInternalServerError)
 		return
 	}
 	if err := admin.terminateUserAccess(ctx, userID); err != nil {
-		admin.recordAudit(r, "user_deleted", "failed", user.UserID, user.DisplayName)
+		admin.recordAudit(r, "user_deleted", "cleanup_failed", user.UserID, user.DisplayName)
 		http.Error(w, "user disabled but access cleanup failed", http.StatusInternalServerError)
 		return
 	}
 
 	session, err := admin.mongo.StartSession()
 	if err != nil {
+		admin.recordAudit(r, "user_deleted", "incomplete", user.UserID, user.DisplayName)
 		http.Error(w, "start deletion transaction failed", http.StatusInternalServerError)
 		return
 	}
 	defer session.EndSession(ctx)
 	_, err = session.WithTransaction(ctx, func(transactionContext mongo.SessionContext) (interface{}, error) {
-		return nil, admin.deleteUserMongo(transactionContext, userID)
+		if err := admin.deleteUserMongo(transactionContext, userID); errors.Is(err, mongo.ErrNoDocuments) {
+			// Another retry committed first. It also wrote the success audit.
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+		username, _ := ctx.Value(authenticatedAdminContextKey{}).(string)
+		return db.Collection(adminAuditName).InsertOne(transactionContext, adminAuditLog{
+			AdminUsername: username, Action: "user_deleted", Result: "success",
+			TargetUserID: user.UserID, TargetName: user.DisplayName, CreatedAt: time.Now(),
+		})
 	})
 	if err != nil {
 		log.Printf("admin delete user transaction failed: %v", err)
-		admin.recordAudit(r, "user_deleted", "failed", user.UserID, user.DisplayName)
+		// A commit error can have an unknown outcome; do not claim rollback.
+		admin.recordAudit(r, "user_deleted", "incomplete", user.UserID, user.DisplayName)
 		http.Error(w, "delete user failed", http.StatusInternalServerError)
 		return
 	}
-	admin.recordAudit(r, "user_deleted", "success", user.UserID, user.DisplayName)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (admin *adminServer) deleteUserMongo(ctx mongo.SessionContext, userID string) error {
 	db := admin.mongo.Database(databaseName)
+	// Claim the deleting document inside the transaction before touching related
+	// data. Concurrent retries conflict here and re-run against the committed state.
+	result, err := db.Collection(usersName).DeleteOne(ctx, bson.M{"user_id": userID, "status": "deleting"})
+	if err != nil {
+		return err
+	}
+	if result.DeletedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
 	if _, err := db.Collection(collectionName).DeleteMany(ctx, bson.M{
 		"$or": bson.A{
 			bson.M{"sender_id": userID},
@@ -811,13 +832,6 @@ func (admin *adminServer) deleteUserMongo(ctx mongo.SessionContext, userID strin
 	}
 	if _, err := db.Collection(deletedChatsName).DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
 		return err
-	}
-	result, err := db.Collection(usersName).DeleteOne(ctx, bson.M{"user_id": userID, "status": "deleting"})
-	if err != nil {
-		return err
-	}
-	if result.DeletedCount != 1 {
-		return errors.New("user disappeared during deletion")
 	}
 	return nil
 }
