@@ -34,7 +34,13 @@ export default function EmulatorPanel({ onClose }) {
   const [systemId, setSystemId] = useState('segaMD')
   const [rom, setRom] = useState(null)
   const [useBundledRom, setUseBundledRom] = useState(false)
-  const [areControlsCollapsed, setAreControlsCollapsed] = useState(false)
+  const [areControlsCollapsed, setAreControlsCollapsed] = useState(() => {
+    try {
+      return window.matchMedia('(max-width: 768px)').matches
+    } catch {
+      return false
+    }
+  })
 
   const system = systems.find((item) => item.id === systemId) || systems[0]
   const selectedRomUrl = useMemo(() => (rom ? URL.createObjectURL(rom) : ''), [rom])
